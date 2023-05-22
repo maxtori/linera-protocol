@@ -9,6 +9,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use wasm_bindgen::prelude::*;
 
 #[cfg(any(test, feature = "test"))]
 use test_strategy::Arbitrary;
@@ -32,6 +33,7 @@ pub enum ChainDescription {
 /// of a [`ChainDescription`].
 #[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Hash, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "test"), derive(Arbitrary, Default))]
+#[wasm_bindgen]
 pub struct ChainId(pub CryptoHash);
 
 /// The index of an effect in a chain.
@@ -295,6 +297,10 @@ doc_scalar!(
     Owner,
     "The owner of a chain. This is currently the hash of the owner's public key used to verify \
     signatures."
+);
+doc_scalar!(
+    Destination,
+    "The destination of a message, relative to a particular application."
 );
 
 #[cfg(test)]

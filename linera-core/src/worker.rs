@@ -117,8 +117,14 @@ doc_scalar!(
 #[allow(clippy::large_enum_variant)]
 /// Reason for the notification.
 pub enum Reason {
-    NewBlock { height: BlockHeight },
-    NewMessage { origin: Origin, height: BlockHeight },
+    NewBlock {
+        height: BlockHeight,
+        hash: CryptoHash,
+    },
+    NewMessage {
+        origin: Origin,
+        height: BlockHeight,
+    },
 }
 
 /// Error type for [`ValidatorWorker`].
@@ -540,6 +546,7 @@ where
             chain_id: block.chain_id,
             reason: Reason::NewBlock {
                 height: block.height,
+                hash: certificate.value.hash(),
             },
         });
         // Persist chain.
