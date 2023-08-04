@@ -12,13 +12,15 @@ use linera_base::{
     ensure,
     identifiers::{ChainId, Owner},
 };
-use linera_chain::data_types::{
-    BlockAndRound, BlockProposal, Certificate, HashedValue, LiteCertificate, LiteValue,
+use linera_chain::{
+    data_types::{
+        BlockAndRound, BlockProposal, Certificate, HashedValue, LiteCertificate, LiteValue,
+    },
+    worker_types::Notification,
 };
 use linera_core::{
     data_types::{ChainInfoQuery, ChainInfoResponse, CrossChainRequest},
     node::NodeError,
-    worker::Notification,
 };
 use linera_execution::committee::ValidatorName;
 use thiserror::Error;
@@ -452,6 +454,7 @@ pub mod tests {
     };
     use linera_chain::{
         data_types::{Block, BlockAndRound, ExecutedBlock, HashedValue},
+        worker_types::Reason,
         ChainManagerInfo,
     };
     use linera_core::data_types::ChainInfo;
@@ -698,7 +701,7 @@ pub mod tests {
     pub fn test_notification() {
         let notification = Notification {
             chain_id: ChainId::root(0),
-            reason: linera_core::worker::Reason::NewBlock {
+            reason: Reason::NewBlock {
                 height: BlockHeight(0),
                 hash: CryptoHash::new(&Foo("".into())),
             },

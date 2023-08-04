@@ -1,0 +1,43 @@
+[package]
+name = "linera-indexer"
+version = "0.4.0"
+description = "Indexer for Linera protocol."
+authors = ["Linera <contact@linera.io>"]
+readme = "README.md"
+repository = "https://github.com/linera-io/linera-protocol"
+homepage = "https://linera.io"
+documentation = "https://docs.rs/linera-indexer/latest/linera_indexer/"
+license = "Apache-2.0"
+edition = "2021"
+
+[dependencies]
+linera-base = { workspace = true }
+linera-execution = { workspace = true }
+linera-views = { workspace = true, features = ["rocksdb"] }
+linera-chain = { workspace = true, features = ["test"] }
+
+serde = { workspace = true }
+async-graphql = { workspace = true }
+async-trait = { workspace = true }
+structopt = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+async-tungstenite = { version = "0.22", features = ["tokio-runtime"] }
+graphql-ws-client = { version = "0.5", features = ["client-graphql-client"] }
+graphql_client = { version = "0.13", features = [ "reqwest" ] }
+reqwest = { workspace = true }
+async-graphql-axum = { workspace = true }
+axum = { workspace = true, features = ["ws", "headers"] }
+async-recursion = "1.0"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["fmt"] }
+hyper = "0.14"
+bcs = { workspace = true }
+
+[package.metadata.cargo-machete]
+ignored = ["async-trait"]
+
+[[bin]]
+name = "linera-indexer"
+path = "src/indexer.rs"

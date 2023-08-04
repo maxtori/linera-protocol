@@ -6,7 +6,7 @@ use crate::{
     data_types::*,
     node::{NodeError, NotificationStream, ValidatorNode},
     notifier::Notifier,
-    worker::{Notification, ValidatorWorker, WorkerState},
+    worker::{ValidatorWorker, WorkerState},
 };
 use async_trait::async_trait;
 use futures::{lock::Mutex, Future};
@@ -15,7 +15,10 @@ use linera_base::{
     data_types::*,
     identifiers::{ChainDescription, ChainId},
 };
-use linera_chain::data_types::{BlockProposal, Certificate, HashedValue, LiteCertificate};
+use linera_chain::{
+    data_types::{BlockProposal, Certificate, HashedValue, LiteCertificate},
+    worker_types::Notification,
+};
 use linera_execution::{
     committee::{Committee, ValidatorName},
     pricing::Pricing,
@@ -520,6 +523,7 @@ where
             block_height,
             std::time::Duration::from_millis(500),
             10,
+            // None,
         ))
     }
 

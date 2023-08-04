@@ -13,7 +13,7 @@ use crate::{
     local_node::LocalNodeError,
     node::NodeError::ClientIoError,
     updater::CommunicationError,
-    worker::{Notification, Reason, WorkerError},
+    worker::WorkerError,
 };
 use futures::{lock::Mutex, StreamExt};
 use linera_base::{
@@ -23,6 +23,7 @@ use linera_base::{
 };
 use linera_chain::{
     data_types::{CertificateValue, ExecutedBlock},
+    worker_types::{Notification, Reason},
     ChainError,
 };
 use linera_execution::{
