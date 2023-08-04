@@ -6,7 +6,7 @@ use crate::{
     data_types::{BlockHeightRange, ChainInfo, ChainInfoQuery},
     node::{LocalNodeClient, NodeError, NotificationStream, ValidatorNode},
     updater::{communicate_with_quorum, CommunicateAction, CommunicationError, ValidatorUpdater},
-    worker::{Notification, Reason, WorkerState},
+    worker::WorkerState,
 };
 use anyhow::{anyhow, bail, ensure, Result};
 use futures::{
@@ -25,6 +25,7 @@ use linera_chain::{
         Block, BlockAndRound, BlockProposal, Certificate, CertificateValue, HashedValue,
         IncomingMessage, LiteCertificate, LiteVote,
     },
+    worker_types::{Notification, Reason},
     ChainManagerInfo, ChainStateView,
 };
 use linera_execution::{
@@ -57,7 +58,7 @@ mod client_tests;
 /// * The chain being operated is called the "local chain" or just the "chain".
 /// * As a rule, operations are considered successful (and communication may stop) when
 /// they succeeded in gathering a quorum of responses.
-pub struct ChainClient<ValidatorNodeProvider, StorageClient> {
+pub struct ChainClient<ValidatorNodeProvider, StorageClient: Store> {
     /// The off-chain chain id.
     chain_id: ChainId,
     /// How to talk to the validators.
@@ -89,6 +90,8 @@ pub struct ChainClient<ValidatorNodeProvider, StorageClient> {
     /// Local node to manage the execution state and the local storage of the chains that we are
     /// tracking.
     node_client: LocalNodeClient<StorageClient>,
+    // /// Indexer with optional plugins
+    // indexer: Option<linera_indexer::Indexer<StorageClient::Context>>,
 }
 
 /// Turn an address into a validator node (local node or client to a remote node).
@@ -113,7 +116,10 @@ pub trait ValidatorNodeProvider {
     }
 }
 
-impl<P, S> ChainClient<P, S> {
+impl<P, S> ChainClient<P, S>
+where
+    S: Store,
+{
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         chain_id: ChainId,
@@ -127,6 +133,7 @@ impl<P, S> ChainClient<P, S> {
         next_block_height: BlockHeight,
         cross_chain_delay: Duration,
         cross_chain_retries: usize,
+        // indexer: Option<linera_indexer::Indexer<S::Context>>,
     ) -> Self {
         let known_key_pairs = known_key_pairs
             .into_iter()
@@ -151,6 +158,7 @@ impl<P, S> ChainClient<P, S> {
             cross_chain_delay,
             cross_chain_retries,
             node_client,
+            // indexer,
         }
     }
 
@@ -1164,7 +1172,22 @@ where
             timestamp,
         };
         let certificate = self.propose_block(block).await?;
+        self.process_indexing(certificate.value.clone());
         Ok(certificate)
+    }
+
+    /// Process optional indexing.
+    fn process_indexing(&self, _block: HashedValue) {
+        // if let Some(indexer) = self.indexer.clone() {
+        //     tokio::spawn(async move {
+        //         if let Err(e) = indexer.process(&block).await {
+        //             warn!("{}", e.to_string())
+        //         }
+        //     });
+        // }
+        // if let Some(_indexer) = &self.indexer {
+        // todo!()
+        // }
     }
 
     /// Returns a suitable timestamp for the next block.

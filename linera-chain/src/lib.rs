@@ -8,6 +8,7 @@ pub mod data_types;
 mod inbox;
 mod manager;
 mod outbox;
+pub mod worker_types;
 
 pub use chain::ChainStateView;
 use data_types::{Event, Origin};

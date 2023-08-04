@@ -15,6 +15,7 @@ members = [
         "linera-witty/test-modules",
         "linera-witty-macros",
         "linera-explorer",
+        "linera-indexer",
 ]
 exclude = [
         "examples",
@@ -123,6 +124,7 @@ linera-views-derive = { version = "0.3.0", path = "./linera-views-derive" }
 linera-witty = { version = "0.3.0", path = "./linera-witty" }
 linera-witty-macros = { version = "0.3.0", path = "./linera-witty-macros" }
 linera-service = { version = "0.3.0", path = "./linera-service" }
+linera-indexer = { version = "0.3.0", path = "./linera-indexer" }
 
 counter = { path = "./examples/counter" }
 meta-counter = { path = "./examples/meta-counter" }
