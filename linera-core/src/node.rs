@@ -5,7 +5,7 @@
 use crate::{
     data_types::{BlockHeightRange, ChainInfo, ChainInfoQuery, ChainInfoResponse},
     notifier::Notifier,
-    worker::{Notification, ValidatorWorker, WorkerError, WorkerState},
+    worker::{ValidatorWorker, WorkerError, WorkerState},
 };
 use async_trait::async_trait;
 use futures::{future, lock::Mutex, Stream};
@@ -18,6 +18,7 @@ use linera_chain::{
     data_types::{
         Block, BlockProposal, Certificate, ExecutedBlock, HashedValue, LiteCertificate, Origin,
     },
+    worker_types::Notification,
     ChainError, ChainManagerInfo,
 };
 use linera_execution::{

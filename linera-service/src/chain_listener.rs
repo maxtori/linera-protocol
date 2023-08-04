@@ -9,11 +9,13 @@ use linera_base::{
     data_types::Timestamp,
     identifiers::{ChainId, Destination},
 };
-use linera_chain::data_types::OutgoingMessage;
+use linera_chain::{
+    data_types::OutgoingMessage,
+    worker_types::{Notification, Reason},
+};
 use linera_core::{
     client::{ChainClient, ValidatorNodeProvider},
     tracker::NotificationTracker,
-    worker::{Notification, Reason},
 };
 use linera_execution::{Message, SystemMessage};
 use linera_storage::Store;
@@ -37,7 +39,7 @@ pub struct ChainListenerConfig {
 pub trait ClientContext<P: ValidatorNodeProvider> {
     fn wallet_state(&self) -> &WalletState;
 
-    fn make_chain_client<S>(
+    fn make_chain_client<S: Store>(
         &self,
         storage: S,
         chain_id: impl Into<Option<ChainId>>,
@@ -58,7 +60,7 @@ pub trait ClientContext<P: ValidatorNodeProvider> {
 
 /// A `ChainListener` is a process that listens to notifications from validators and reacts
 /// appropriately.
-pub struct ChainListener<P, S> {
+pub struct ChainListener<P, S: linera_storage::Store> {
     config: ChainListenerConfig,
     clients: ChainClients<P, S>,
 }

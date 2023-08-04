@@ -34,10 +34,10 @@ use grpc::{
     LiteCertificate, SubscriptionRequest,
 };
 use linera_base::identifiers::ChainId;
-use linera_chain::data_types;
+use linera_chain::{data_types, worker_types::Notification};
 use linera_core::{
     node::{NodeError, NotificationStream, ValidatorNode},
-    worker::{NetworkActions, Notification, ValidatorWorker, WorkerError, WorkerState},
+    worker::{NetworkActions, ValidatorWorker, WorkerError, WorkerState},
 };
 use linera_storage::Store;
 use linera_views::views::ViewError;

@@ -230,6 +230,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-recursion"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e97ce7de6cf12de5d7226c73f5ba9811622f4db3a5b91b55c53e987e5f91cba"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.15",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -260,6 +271,20 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "async-tungstenite"
+version = "0.22.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce01ac37fdc85f10a43c43bc582cbd566720357011578a935761075f898baf58"
+dependencies = [
+ "futures-io",
+ "futures-util",
+ "log",
+ "pin-project-lite",
+ "tokio",
+ "tungstenite 0.19.0",
 ]
 
 [[package]]
@@ -1598,6 +1623,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "data-encoding"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2e66c9d817f1720209181c316d28635c050fa304f9c79e47a520882661b7308"
+
+[[package]]
 name = "derive_more"
 version = "0.99.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2160,6 +2191,23 @@ checksum = "d2ebc8013b4426d5b81a4364c419a95ed0b404af2b82e2457de52d9348f0e474"
 dependencies = [
  "combine",
  "thiserror",
+]
+
+[[package]]
+name = "graphql-ws-client"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09d6c77c2de260d565a53df302f27412930a961de7cbecfdfa18e61fe0c59604"
+dependencies = [
+ "async-tungstenite",
+ "futures",
+ "graphql_client",
+ "log",
+ "pin-project",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]
@@ -2816,6 +2864,34 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "ws_stream_wasm",
+]
+
+[[package]]
+name = "linera-indexer"
+version = "0.3.0"
+dependencies = [
+ "async-graphql",
+ "async-graphql-axum",
+ "async-recursion",
+ "async-trait",
+ "async-tungstenite",
+ "axum",
+ "bcs",
+ "futures",
+ "graphql-ws-client",
+ "graphql_client",
+ "hyper",
+ "linera-base",
+ "linera-chain",
+ "linera-execution",
+ "linera-views",
+ "reqwest",
+ "serde",
+ "structopt",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -5489,7 +5565,7 @@ dependencies = [
  "futures-util",
  "log",
  "tokio",
- "tungstenite",
+ "tungstenite 0.18.0",
 ]
 
 [[package]]
@@ -5746,6 +5822,25 @@ dependencies = [
  "base64 0.13.1",
  "byteorder",
  "bytes",
+ "http",
+ "httparse",
+ "log",
+ "rand 0.8.5",
+ "sha1",
+ "thiserror",
+ "url",
+ "utf-8",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15fba1a6d6bb030745759a9a2a588bfe8490fc8b4751a277db3a0be1c9ebbf67"
+dependencies = [
+ "byteorder",
+ "bytes",
+ "data-encoding",
  "http",
  "httparse",
  "log",
