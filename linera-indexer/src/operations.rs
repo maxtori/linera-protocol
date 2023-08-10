@@ -3,8 +3,9 @@
 
 //! This module defines the operations indexer plugin.
 
-use crate::types::IndexerError;
+use crate::{plugin::Plugin, types::IndexerError};
 use async_graphql::{Object, SimpleObject};
+use async_trait::async_trait;
 use linera_base::{
     crypto::{BcsHashable, CryptoHash},
     data_types::BlockHeight,
@@ -26,13 +27,13 @@ use tracing::info;
 pub struct BlockOperation {
     block: CryptoHash,
     index: usize,
-    content: linera_execution::Operation,
+    content: Operation,
 }
 
 impl BcsHashable for BlockOperation {}
 
 #[derive(Deserialize, Serialize, Clone, SimpleObject, Debug)]
-pub struct OperationView {
+pub struct ChainOperation {
     operation: BlockOperation,
     height: BlockHeight,
     previous_operation: Option<CryptoHash>,
@@ -43,7 +44,7 @@ pub struct OperationsPluginInternal<C> {
     last: MapView<C, ChainId, (CryptoHash, BlockHeight, usize)>,
     count: MapView<C, ChainId, u32>,
     /// OperationView MapView indexed by their hash
-    operations: MapView<C, CryptoHash, OperationView>,
+    operations: MapView<C, CryptoHash, ChainOperation>,
 }
 
 #[derive(Clone)]
@@ -79,7 +80,7 @@ where
                     content,
                 };
                 let key = CryptoHash::new(&operation);
-                let operation_view = OperationView {
+                let operation_view = ChainOperation {
                     operation,
                     previous_operation,
                     height,
@@ -96,9 +97,17 @@ where
             }
         }
     }
+}
 
+#[async_trait]
+impl<C> Plugin for OperationsPlugin<C>
+where
+    C: Context + Send + Sync + 'static + Clone,
+    ViewError: From<C::Error>,
+{
+    type C = C;
     /// Main function of plugin: registers the operations for a hashed value
-    pub async fn register(&self, value: &HashedValue) -> Result<(), IndexerError> {
+    async fn register(&self, value: &HashedValue) -> Result<(), IndexerError> {
         let block = &value.inner().executed_block().block;
         let chain_id = value.inner().chain_id();
         for (i, op) in block.operations.iter().enumerate() {
@@ -114,9 +123,9 @@ where
     }
 
     /// Loads the plugin view from context
-    pub async fn load(context: C) -> Result<Self, IndexerError> {
+    async fn load(context: C) -> Result<Box<Self>, IndexerError> {
         let plugin = OperationsPluginInternal::load(context).await?;
-        Ok(OperationsPlugin(Arc::new(Mutex::new(plugin))))
+        Ok(Box::new(OperationsPlugin(Arc::new(Mutex::new(plugin)))))
     }
 }
 
@@ -127,7 +136,7 @@ where
     ViewError: From<C::Error>,
 {
     /// Gets the operation associated to its hash
-    pub async fn operation(&self, key: CryptoHash) -> Result<Option<OperationView>, IndexerError> {
+    pub async fn operation(&self, key: CryptoHash) -> Result<Option<ChainOperation>, IndexerError> {
         self.0
             .lock()
             .await
@@ -142,7 +151,7 @@ where
         &self,
         from: CryptoHash,
         limit: u32,
-    ) -> Result<Vec<OperationView>, IndexerError> {
+    ) -> Result<Vec<ChainOperation>, IndexerError> {
         let mut key = Some(from);
         let mut result = Vec::new();
         for _ in 0..limit {

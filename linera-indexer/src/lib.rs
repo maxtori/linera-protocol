@@ -13,6 +13,7 @@ pub mod types;
 
 use crate::{
     graphql::{block, Block},
+    plugin::Plugin,
     types::IndexerError,
 };
 use async_recursion::async_recursion;
@@ -64,7 +65,7 @@ where
             let context = ContextFromDb::create(client.clone(), vec![1], ())
                 .await
                 .map_err(|e| IndexerError::ViewError(e.into()))?;
-            Some(OperationsPlugin::load(context).await?)
+            Some(*OperationsPlugin::load(context).await?)
         } else {
             None
         };
