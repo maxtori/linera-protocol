@@ -4,7 +4,7 @@
 //! This module defines the operations indexer plugin.
 
 use crate::types::IndexerError;
-use async_graphql::{Object, SimpleObject};
+use async_graphql::{EmptyMutation, EmptySubscription, Object, OutputType, Schema, SimpleObject};
 use linera_base::{
     crypto::{BcsHashable, CryptoHash},
     data_types::BlockHeight,
@@ -32,18 +32,20 @@ pub struct BlockOperation {
 impl BcsHashable for BlockOperation {}
 
 #[derive(Deserialize, Serialize, Clone, SimpleObject, Debug)]
-pub struct OperationView {
+pub struct ChainOperation<H: Sync + Send + OutputType> {
     operation: BlockOperation,
     height: BlockHeight,
     previous_operation: Option<CryptoHash>,
+    operation_index: u64,
+    hash: H,
 }
 
 #[derive(RootView)]
 pub struct OperationsPluginInternal<C> {
     last: MapView<C, ChainId, (CryptoHash, BlockHeight, usize)>,
-    count: MapView<C, ChainId, u32>,
-    /// OperationView MapView indexed by their hash
-    operations: MapView<C, CryptoHash, OperationView>,
+    count: MapView<C, ChainId, u64>,
+    /// ChainOperation MapView indexed by their hash
+    operations: MapView<C, CryptoHash, ChainOperation<bool>>,
 }
 
 #[derive(Clone)]
@@ -79,10 +81,13 @@ where
                     content,
                 };
                 let key = CryptoHash::new(&operation);
-                let operation_view = OperationView {
+                let operation_index = *plugin.count.get_mut(&chain_id).await?.unwrap_or(&mut 0);
+                let operation_view = ChainOperation {
                     operation,
                     previous_operation,
                     height,
+                    operation_index,
+                    hash: false,
                 };
                 info!(
                     "register operation for {:?}:\n{:?}",
@@ -127,6 +132,21 @@ where
         let plugin = OperationsPluginInternal::load(context).await?;
         Ok(OperationsPlugin(Arc::new(Mutex::new(plugin))))
     }
+
+    pub fn schema(self) -> Schema<Self, EmptyMutation, EmptySubscription> {
+        Schema::build(self, EmptyMutation, EmptySubscription).finish()
+    }
+}
+
+fn hashed_operation(operation: ChainOperation<bool>) -> ChainOperation<CryptoHash> {
+    let hash = CryptoHash::new(&operation.operation);
+    ChainOperation {
+        operation: operation.operation,
+        height: operation.height,
+        previous_operation: operation.previous_operation,
+        operation_index: operation.operation_index,
+        hash,
+    }
 }
 
 #[Object(name = "OperationsRoot")]
@@ -136,24 +156,30 @@ where
     ViewError: From<C::Error>,
 {
     /// Gets the operation associated to its hash
-    pub async fn operation(&self, key: CryptoHash) -> Result<Option<OperationView>, IndexerError> {
-        self.0
+    pub async fn operation(
+        &self,
+        key: CryptoHash,
+    ) -> Result<Option<ChainOperation<CryptoHash>>, IndexerError> {
+        let operation = self
+            .0
             .lock()
             .await
             .operations
             .get(&key)
             .await
-            .map_err(IndexerError::ViewError)
+            .map_err(IndexerError::ViewError)?;
+        Ok(operation.map(hashed_operation))
     }
 
     /// Gets the operations in downard order from a operation hash
     pub async fn operations(
         &self,
         from: CryptoHash,
-        limit: u32,
-    ) -> Result<Vec<OperationView>, IndexerError> {
+        limit: Option<u32>,
+    ) -> Result<Vec<ChainOperation<CryptoHash>>, IndexerError> {
         let mut key = Some(from);
         let mut result = Vec::new();
+        let limit = limit.unwrap_or(20);
         for _ in 0..limit {
             let Some(next_key) = key else { break };
             let operation = self.0.lock().await.operations.get(&next_key).await?;
@@ -161,7 +187,7 @@ where
                 None => break,
                 Some(op) => {
                     key = op.previous_operation;
-                    result.push(op)
+                    result.push(hashed_operation(op))
                 }
             }
         }
@@ -169,7 +195,7 @@ where
     }
 
     /// Gets the number of operations registered for a chain
-    pub async fn count(&self, chain_id: ChainId) -> Result<u32, IndexerError> {
+    pub async fn count(&self, chain_id: ChainId) -> Result<u64, IndexerError> {
         let plugin = self.0.lock().await;
         plugin
             .count

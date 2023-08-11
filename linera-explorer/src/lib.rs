@@ -28,7 +28,8 @@ use ws_stream_wasm::*;
 
 use graphql::{
     applications::ApplicationsApplications as Application, block::BlockBlock as Block,
-    blocks::BlocksBlocks as Blocks, Chains,
+    blocks::BlocksBlocks as Blocks, get_operation::GetOperationOperation as Operation,
+    operations::OperationsOperations as Operations, Chains,
 };
 use js_utils::{getf, log_str, parse, setf, stringify, SER};
 use once_cell::sync::OnceCell;
@@ -53,6 +54,8 @@ enum Page {
         mutations: Value,
         subscriptions: Value,
     },
+    Operations(Vec<Operations>),
+    Operation(Operation),
     Error(String),
 }
 
@@ -60,6 +63,7 @@ enum Page {
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Config {
+    indexer: String,
     node: String,
     tls: bool,
 }
@@ -68,6 +72,7 @@ impl Config {
     /// Loads config from local storage.
     fn load() -> Self {
         let default = Config {
+            indexer: "localhost:8081".to_string(),
             node: "localhost:8080".to_string(),
             tls: false,
         };
@@ -119,13 +124,22 @@ pub enum Protocol {
     Websocket,
 }
 
-fn node_service_address(config: &Config, protocol: Protocol) -> String {
+pub enum AddressKind {
+    Node,
+    Indexer,
+}
+
+fn url(config: &Config, protocol: Protocol, kind: AddressKind) -> String {
     let protocol = match protocol {
         Protocol::Http => "http",
         Protocol::Websocket => "ws",
     };
     let tls = if config.tls { "s" } else { "" };
-    format!("{}{}://{}", protocol, tls, config.node)
+    let address = match kind {
+        AddressKind::Node => &config.node,
+        AddressKind::Indexer => &config.indexer,
+    };
+    format!("{}{}://{}", protocol, tls, address)
 }
 
 async fn get_blocks(
@@ -159,6 +173,35 @@ async fn get_applications(node: &str, chain_id: ChainId) -> Result<Vec<Applicati
         None => Err(format!("null applications data: {:?}", result.errors)),
         Some(data) => Ok(data.applications),
     }
+}
+
+async fn get_operations(indexer: &str, chain_id: ChainId) -> Result<Vec<Operations>, String> {
+    let client = reqwest::Client::new();
+    let variables = graphql::last_operation::Variables { chain_id };
+    let operations_indexer = format!("{}/operations", indexer);
+    let result =
+        post_graphql::<crate::graphql::LastOperation, _>(&client, &operations_indexer, variables)
+            .await
+            .map_err(|e| e.to_string())?;
+    let data = result
+        .data
+        .ok_or(format!("null last operation data: {:?}", result.errors))?;
+    let Some(last) = data.last else {
+        return Ok(Vec::new());
+    };
+    let variables = graphql::operations::Variables {
+        from: last,
+        limit: None,
+    };
+    let result =
+        post_graphql::<crate::graphql::Operations, _>(&client, &operations_indexer, variables)
+            .await
+            .map_err(|e| e.to_string())?;
+
+    result
+        .data
+        .ok_or(format!("null operations data: {:?}", result.errors))
+        .map(|data| data.operations)
 }
 
 /// Returns the error page.
@@ -230,6 +273,37 @@ async fn applications(node: &str, chain_id: ChainId) -> Result<(Page, String), S
     Ok((
         Page::Applications(applications),
         format!("/applications?chain={}", chain_id),
+    ))
+}
+
+/// Returns the applications page.
+async fn operations(indexer: &str, chain_id: ChainId) -> Result<(Page, String), String> {
+    let operations = get_operations(indexer, chain_id).await?;
+    Ok((
+        Page::Operations(operations),
+        format!("/operations?chain={}", chain_id),
+    ))
+}
+
+/// Returns the block page.
+async fn operation(
+    indexer: &str,
+    key: CryptoHash,
+    chain_id: ChainId,
+) -> Result<(Page, String), String> {
+    let client = reqwest::Client::new();
+    let operations_indexer = format!("{}/operations", indexer);
+    let variables = graphql::get_operation::Variables { key };
+    let result =
+        post_graphql::<crate::graphql::GetOperation, _>(&client, operations_indexer, variables)
+            .await
+            .map_err(|e| e.to_string())?;
+    let data = result.data.ok_or("no operation data found".to_string())?;
+    let operation = data.operation.ok_or("no operation found".to_string())?;
+    let key = operation.hash;
+    Ok((
+        Page::Operation(operation),
+        format!("/operation/{}?chain={}", key, chain_id),
     ))
 }
 
@@ -396,6 +470,11 @@ fn page_name_and_args(page: &Page) -> (&str, Vec<(String, String)>) {
             "application",
             vec![("app".to_string(), stringify(&app.serialize(&SER).unwrap()))],
         ),
+        Page::Operations(_) => ("operations", Vec::new()),
+        Page::Operation(op) => (
+            "operation",
+            vec![("operation".to_string(), op.hash.to_string())],
+        ),
         Page::Error(_) => ("error", Vec::new()),
     }
 }
@@ -438,7 +517,7 @@ async fn route_aux(
         (Some(p), _) => (p, args.to_vec()),
         (_, p) => page_name_and_args(p),
     };
-    let address = node_service_address(&data.config, Protocol::Http);
+    let address = url(&data.config, Protocol::Http, AddressKind::Node);
     let result = match chain_info {
         Err(e) => Err(e),
         Ok((chain_id, chain_changed)) => {
@@ -462,6 +541,22 @@ async fn route_aux(
                         application(app).await
                     }
                 },
+                "operation" => {
+                    let key = find_arg(&args, "operation")
+                        .map(|key| CryptoHash::from_str(&key).map_err(|e| e.to_string()));
+                    match key {
+                        Some(Err(e)) => Err(e),
+                        None => block(&address, chain_id, None).await,
+                        Some(Ok(key)) => {
+                            let indexer = url(&data.config, Protocol::Http, AddressKind::Indexer);
+                            operation(&indexer, key, chain_id).await
+                        }
+                    }
+                }
+                "operations" => {
+                    let indexer = url(&data.config, Protocol::Http, AddressKind::Indexer);
+                    operations(&indexer, chain_id).await
+                }
                 "error" => {
                     let msg = find_arg(&args, "msg").unwrap_or("unknown error".to_string());
                     Err(msg)
@@ -472,7 +567,7 @@ async fn route_aux(
                 if let Some(ws) = WEBSOCKET.get() {
                     let _ = ws.close().await;
                 }
-                let address = node_service_address(&data.config, Protocol::Websocket);
+                let address = url(&data.config, Protocol::Websocket, AddressKind::Node);
                 subscribe_chain(app, &address, chain_id).await;
             };
             page_result
@@ -501,8 +596,8 @@ pub async fn route(app: JsValue, path: JsValue, args: JsValue) {
 
 #[wasm_bindgen]
 pub fn short_cryptohash(s: String) -> String {
-    let n = s.len();
-    format!("{}..{}", &s[..4], &s[n - 4..])
+    let hash = CryptoHash::from_str(&s).expect("not a cryptohash");
+    format!("{:?}", hash)
 }
 
 #[wasm_bindgen]
@@ -586,7 +681,7 @@ pub async fn init(app: JsValue, uri: String) {
     console_error_panic_hook::set_once();
     set_onpopstate(app.clone());
     let data = from_value::<Data>(app.clone()).expect("cannot parse vue data");
-    let address = node_service_address(&data.config, Protocol::Http);
+    let address = url(&data.config, Protocol::Http, AddressKind::Node);
     let default_chain = chains(&app, &address).await;
     match default_chain {
         Err(e) => {
