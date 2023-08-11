@@ -2890,6 +2890,7 @@ dependencies = [
  "structopt",
  "thiserror",
  "tokio",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
 ]

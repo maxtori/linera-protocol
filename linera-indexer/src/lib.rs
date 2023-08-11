@@ -133,4 +133,14 @@ where
             _ => Ok(()),
         }
     }
+
+    pub fn sdl(&self, plugin: &str) -> Result<String, IndexerError> {
+        match plugin {
+            "operations" => match &self.operations {
+                None => Err(IndexerError::UnloadedPlugin(plugin.to_string())),
+                Some(plugin) => Ok(plugin.clone().schema().sdl()),
+            },
+            _ => Err(IndexerError::UnknownPlugin(plugin.to_string())),
+        }
+    }
 }

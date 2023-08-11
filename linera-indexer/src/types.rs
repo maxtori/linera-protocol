@@ -25,4 +25,8 @@ pub enum IndexerError {
     NullData(Option<Vec<graphql_client::Error>>),
     #[error("Block not found: {0}")]
     NotFound(linera_base::crypto::CryptoHash),
+    #[error("Unknown plugin: {0}")]
+    UnknownPlugin(String),
+    #[error("Plugin not loaded: {0}")]
+    UnloadedPlugin(String),
 }

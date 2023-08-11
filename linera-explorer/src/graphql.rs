@@ -115,3 +115,35 @@ pub async fn introspection(url: &str) -> Result<Value, String> {
         .map_err(|e| e.to_string())?;
     serde_json::from_str::<Value>(&res).map_err(|e| e.to_string())
 }
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "graphql/operations_schema.graphql",
+    query_path = "graphql/operations_requests.graphql",
+    response_derives = "Debug, Serialize, Clone"
+)]
+pub struct Operations;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "graphql/operations_schema.graphql",
+    query_path = "graphql/operations_requests.graphql",
+    response_derives = "Debug, Serialize, Clone"
+)]
+pub struct OperationsCount;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "graphql/operations_schema.graphql",
+    query_path = "graphql/operations_requests.graphql",
+    response_derives = "Debug, Serialize, Clone"
+)]
+pub struct LastOperation;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "graphql/operations_schema.graphql",
+    query_path = "graphql/operations_requests.graphql",
+    response_derives = "Debug, Serialize, Clone"
+)]
+pub struct GetOperation;
