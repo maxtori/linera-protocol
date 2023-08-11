@@ -1,0 +1,35 @@
+query Operations($from: CryptoHash!, $limit: Int) {
+  operations(from: $from, limit: $limit) {
+    operation {
+      block
+      index
+      content
+    }
+    height
+    previousOperation
+    operationIndex
+    hash
+  }
+}
+
+query OperationsCount($chainId: ChainId!) {
+  count(chainId: $chainId)
+}
+
+query LastOperation($chainId: ChainId!) {
+  last(chainId: $chainId)
+}
+
+query GetOperation($key: CryptoHash!) {
+  operation(key: $key) {
+    operation {
+      block
+      index
+      content
+    }
+    height
+    previousOperation
+    operationIndex
+    hash
+  }
+}

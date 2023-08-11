@@ -34,6 +34,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["fmt"] }
 hyper = "0.14"
 bcs = { workspace = true }
+tower-http = { workspace = true, features = ["cors"] }
 
 [package.metadata.cargo-machete]
 ignored = ["async-trait"]
