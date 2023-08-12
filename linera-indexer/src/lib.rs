@@ -13,6 +13,7 @@ pub mod types;
 
 use crate::{
     graphql::{block, Block},
+    plugin::Plugin,
     types::IndexerError,
 };
 use async_recursion::async_recursion;
@@ -40,6 +41,7 @@ pub struct Indexer<C> {
     node: String,
     state: Arc<Mutex<StateView<C>>>,
     pub operations: Option<OperationsPlugin<C>>,
+    pub plugins: Vec<Box<dyn plugin::Plugin<C = C> + Send + Sync>>,
 }
 
 impl<DB> Indexer<ContextFromDb<(), DB>>
@@ -60,14 +62,36 @@ where
         start: BlockHeight,
         node: String,
     ) -> Result<Self, IndexerError> {
+        let _plugins: Vec<
+            Option<Box<dyn plugin::Plugin<C = ContextFromDb<(), DB>> + Send + Sync>>,
+        > = futures::future::join_all(plugins.iter().enumerate().map(|(i, s)| async {
+            if s == &"operation" {
+                let base: u8 = (i + 1).try_into().unwrap();
+                let context = ContextFromDb::create(client.clone(), vec![base], ())
+                    .await
+                    .map_err(|e| IndexerError::ViewError(e.into()))
+                    .ok()?;
+                Some(Box::new(OperationsPlugin::load(context).await.ok()?))
+            } else {
+                None
+            }
+        }))
+        .await;
+
+        let mut _plugins: Vec<Box<dyn plugin::Plugin<C = ContextFromDb<(), DB>> + Send + Sync>> =
+            Vec::new();
+
         let operations = if plugins.contains(&"operations") {
             let context = ContextFromDb::create(client.clone(), vec![1], ())
                 .await
                 .map_err(|e| IndexerError::ViewError(e.into()))?;
-            Some(OperationsPlugin::load(context).await?)
+            _plugins.push(Box::new(OperationsPlugin::load(context).await?));
+            None
+            // Some(OperationsPlugin::load(context).await?)
         } else {
             None
         };
+
         let context = ContextFromDb::create(client, vec![0], ())
             .await
             .map_err(|e| IndexerError::ViewError(e.into()))?;
@@ -77,6 +101,7 @@ where
             state,
             start,
             node,
+            plugins: Vec::new(),
         })
     }
 

@@ -19,6 +19,7 @@ use linera_chain::worker_types::Reason;
 use linera_indexer::{
     graphql::{chains, notifications, Chains, Notifications},
     operations::OperationsPlugin,
+    plugin::Plugin,
     types::IndexerError,
     Indexer,
 };

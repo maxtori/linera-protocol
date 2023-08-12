@@ -101,9 +101,18 @@ where
             }
         }
     }
+}
+
+#[async_trait::async_trait]
+impl<C> crate::plugin::Plugin for OperationsPlugin<C>
+where
+    C: Context + Send + Sync + 'static + Clone,
+    ViewError: From<C::Error>,
+{
+    type C = C;
 
     /// Main function of plugin: registers the operations for a hashed value
-    pub async fn register(&self, value: &HashedValue) -> Result<(), IndexerError> {
+    async fn register(&self, value: &HashedValue) -> Result<(), IndexerError> {
         let block = &value.inner().executed_block().block;
         let chain_id = value.inner().chain_id();
         for (i, op) in block.operations.iter().enumerate() {
@@ -119,13 +128,17 @@ where
     }
 
     /// Loads the plugin view from context
-    pub async fn load(context: C) -> Result<Self, IndexerError> {
+    async fn load(context: C) -> Result<Self, IndexerError> {
         let plugin = OperationsPluginInternal::load(context).await?;
         Ok(OperationsPlugin(Arc::new(Mutex::new(plugin))))
     }
 
-    pub fn schema(self) -> Schema<Self, EmptyMutation, EmptySubscription> {
+    fn schema(self) -> Schema<Self, EmptyMutation, EmptySubscription> {
         Schema::build(self, EmptyMutation, EmptySubscription).finish()
+    }
+
+    fn name(&self) -> String {
+        "operation".to_string()
     }
 }
 
