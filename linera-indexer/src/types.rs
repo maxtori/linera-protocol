@@ -21,7 +21,7 @@ pub enum IndexerError {
     ParserError(#[from] AddrParseError),
     #[error(transparent)]
     ServerError(#[from] hyper::Error),
-    #[error("Null data: {0:?}")]
+    #[error("Null GraphQL data: {0:?}")]
     NullData(Option<Vec<graphql_client::Error>>),
     #[error("Block not found: {0}")]
     NotFound(linera_base::crypto::CryptoHash),

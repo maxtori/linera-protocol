@@ -22,10 +22,10 @@ use linera_base::{
 };
 use linera_chain::{
     data_types::{
+        notifications::{Notification, Reason},
         Block, BlockAndRound, BlockProposal, Certificate, CertificateValue, HashedValue,
         IncomingMessage, LiteCertificate, LiteVote,
     },
-    worker_types::{Notification, Reason},
     ChainManagerInfo, ChainStateView,
 };
 use linera_execution::{
@@ -58,7 +58,7 @@ mod client_tests;
 /// * The chain being operated is called the "local chain" or just the "chain".
 /// * As a rule, operations are considered successful (and communication may stop) when
 /// they succeeded in gathering a quorum of responses.
-pub struct ChainClient<ValidatorNodeProvider, StorageClient: Store> {
+pub struct ChainClient<ValidatorNodeProvider, StorageClient> {
     /// The off-chain chain id.
     chain_id: ChainId,
     /// How to talk to the validators.
@@ -90,8 +90,6 @@ pub struct ChainClient<ValidatorNodeProvider, StorageClient: Store> {
     /// Local node to manage the execution state and the local storage of the chains that we are
     /// tracking.
     node_client: LocalNodeClient<StorageClient>,
-    // /// Indexer with optional plugins
-    // indexer: Option<linera_indexer::Indexer<StorageClient::Context>>,
 }
 
 /// Turn an address into a validator node (local node or client to a remote node).
@@ -116,10 +114,7 @@ pub trait ValidatorNodeProvider {
     }
 }
 
-impl<P, S> ChainClient<P, S>
-where
-    S: Store,
-{
+impl<P, S> ChainClient<P, S> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         chain_id: ChainId,
@@ -133,7 +128,6 @@ where
         next_block_height: BlockHeight,
         cross_chain_delay: Duration,
         cross_chain_retries: usize,
-        // indexer: Option<linera_indexer::Indexer<S::Context>>,
     ) -> Self {
         let known_key_pairs = known_key_pairs
             .into_iter()
@@ -158,7 +152,6 @@ where
             cross_chain_delay,
             cross_chain_retries,
             node_client,
-            // indexer,
         }
     }
 
@@ -1171,23 +1164,7 @@ where
             authenticated_signer: Some(self.identity().await?),
             timestamp,
         };
-        let certificate = self.propose_block(block).await?;
-        self.process_indexing(certificate.value.clone());
-        Ok(certificate)
-    }
-
-    /// Process optional indexing.
-    fn process_indexing(&self, _block: HashedValue) {
-        // if let Some(indexer) = self.indexer.clone() {
-        //     tokio::spawn(async move {
-        //         if let Err(e) = indexer.process(&block).await {
-        //             warn!("{}", e.to_string())
-        //         }
-        //     });
-        // }
-        // if let Some(_indexer) = &self.indexer {
-        // todo!()
-        // }
+        self.propose_block(block).await
     }
 
     /// Returns a suitable timestamp for the next block.

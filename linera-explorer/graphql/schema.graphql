@@ -366,7 +366,7 @@ type MutationRoot {
 }
 
 """
-Notify that a chain has a new certified block or a new message
+Notification that a chain has a new certified block or a new message
 """
 scalar Notification
 

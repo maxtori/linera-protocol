@@ -1,6 +1,7 @@
 // Copyright (c) Zefchain Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use anyhow::Result;
 use graphql_client::GraphQLQuery;
 use linera_base::{
     crypto::CryptoHash,
@@ -81,7 +82,7 @@ pub struct Applications;
 )]
 pub struct Notifications;
 
-pub async fn introspection(url: &str) -> Result<Value, String> {
+pub async fn introspection(url: &str) -> Result<Value> {
     let client = reqwest::Client::new();
     let graphql_query =
         "query { \
@@ -113,12 +114,10 @@ pub async fn introspection(url: &str) -> Result<Value, String> {
         .post(url)
         .body(format!("{{\"query\":\"{}\"}}", graphql_query))
         .send()
-        .await
-        .map_err(|e| e.to_string())?
+        .await?
         .text()
-        .await
-        .map_err(|e| e.to_string())?;
-    serde_json::from_str::<Value>(&res).map_err(|e| e.to_string())
+        .await?;
+    Ok(serde_json::from_str::<Value>(&res)?)
 }
 
 #[derive(GraphQLQuery)]

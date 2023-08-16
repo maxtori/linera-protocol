@@ -2856,6 +2856,7 @@ dependencies = [
 name = "linera-explorer"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
  "console_error_panic_hook",
  "futures",
  "graphql_client",

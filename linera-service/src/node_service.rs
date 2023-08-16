@@ -24,7 +24,10 @@ use linera_base::{
     identifiers::{ApplicationId, BytecodeId, ChainId, Owner},
     BcsHexParseError,
 };
-use linera_chain::{data_types::HashedValue, worker_types::Notification, ChainStateView};
+use linera_chain::{
+    data_types::{notifications::Notification, HashedValue},
+    ChainStateView,
+};
 use linera_core::client::{ChainClient, ValidatorNodeProvider};
 use linera_execution::{
     committee::{Committee, Epoch},
@@ -48,21 +51,21 @@ pub struct Chains {
 }
 
 pub type ClientMapInner<P, S> = BTreeMap<ChainId, Arc<Mutex<ChainClient<P, S>>>>;
-pub(crate) struct ChainClients<P, S: Store>(Arc<Mutex<ClientMapInner<P, S>>>);
+pub(crate) struct ChainClients<P, S>(Arc<Mutex<ClientMapInner<P, S>>>);
 
-impl<P, S: Store> Clone for ChainClients<P, S> {
+impl<P, S> Clone for ChainClients<P, S> {
     fn clone(&self) -> Self {
         ChainClients(self.0.clone())
     }
 }
 
-impl<P, S: Store> Default for ChainClients<P, S> {
+impl<P, S> Default for ChainClients<P, S> {
     fn default() -> Self {
         Self(Arc::new(Mutex::new(BTreeMap::new())))
     }
 }
 
-impl<P, S: Store> ChainClients<P, S> {
+impl<P, S> ChainClients<P, S> {
     async fn client(&self, chain_id: &ChainId) -> Option<Arc<Mutex<ChainClient<P, S>>>> {
         Some(self.0.lock().await.get(chain_id)?.clone())
     }
@@ -89,19 +92,19 @@ impl<P, S: Store> ChainClients<P, S> {
 }
 
 /// Our root GraphQL query type.
-pub struct QueryRoot<P, S: Store> {
+pub struct QueryRoot<P, S> {
     clients: ChainClients<P, S>,
     port: NonZeroU16,
     default_chain: Option<ChainId>,
 }
 
 /// Our root GraphQL subscription type.
-pub struct SubscriptionRoot<P, S: Store> {
+pub struct SubscriptionRoot<P, S> {
     clients: ChainClients<P, S>,
 }
 
 /// Our root GraphQL mutation type.
-pub struct MutationRoot<P, S: Store> {
+pub struct MutationRoot<P, S> {
     clients: ChainClients<P, S>,
 }
 
@@ -631,7 +634,7 @@ async fn graphiql(uri: Uri) -> impl IntoResponse {
 
 /// The `NodeService` is a server that exposes a web-server to the client.
 /// The node service is primarily used to explore the state of a chain in GraphQL.
-pub struct NodeService<P, S: Store> {
+pub struct NodeService<P, S> {
     clients: ChainClients<P, S>,
     config: ChainListenerConfig,
     port: NonZeroU16,
@@ -639,7 +642,7 @@ pub struct NodeService<P, S: Store> {
     storage: S,
 }
 
-impl<P, S: Store + Clone> Clone for NodeService<P, S> {
+impl<P, S: Clone> Clone for NodeService<P, S> {
     fn clone(&self) -> Self {
         Self {
             clients: self.clients.clone(),

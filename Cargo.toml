@@ -4,6 +4,7 @@ members = [
         "linera-chain",
         "linera-core",
         "linera-execution",
+        "linera-indexer",
         "linera-rpc",
         "linera-sdk",
         "linera-sdk/wasm-tests",
@@ -15,7 +16,6 @@ members = [
         "linera-witty/test-modules",
         "linera-witty-macros",
         "linera-explorer",
-        "linera-indexer",
 ]
 exclude = [
         "examples",

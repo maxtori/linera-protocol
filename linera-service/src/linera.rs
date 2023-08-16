@@ -87,7 +87,7 @@ impl chain_listener::ClientContext<NodeProvider> for ClientContext {
         &self.wallet_state
     }
 
-    fn make_chain_client<S: Store>(
+    fn make_chain_client<S>(
         &self,
         storage: S,
         chain_id: impl Into<Option<ChainId>>,
@@ -229,11 +229,10 @@ impl ClientContext {
         validator_clients
     }
 
-    fn make_chain_client<S: Store>(
+    fn make_chain_client<S>(
         &self,
         storage: S,
         chain_id: impl Into<Option<ChainId>>,
-        // indexer: Option<linera_indexer::Indexer<S::Context>>,
     ) -> ChainClient<NodeProvider, S> {
         let chain_id = chain_id.into().unwrap_or_else(|| {
             self.wallet_state
@@ -261,7 +260,6 @@ impl ClientContext {
             chain.next_block_height,
             self.cross_chain_delay,
             self.cross_chain_retries,
-            // indexer,
         )
     }
 
@@ -286,10 +284,7 @@ impl ClientContext {
         ViewError: From<S::ContextError>,
     {
         for chain_id in self.wallet_state.own_chain_ids() {
-            let mut chain_client = self.make_chain_client(
-                storage.clone(),
-                chain_id, // None
-            );
+            let mut chain_client = self.make_chain_client(storage.clone(), chain_id);
             chain_client.process_inbox().await.unwrap();
             chain_client.update_validators().await.unwrap();
             self.update_wallet_from_client(&mut chain_client).await;
@@ -488,10 +483,7 @@ impl ClientContext {
     {
         let mut certificates = Vec::new();
         for chain_id in self.wallet_state.chain_ids() {
-            let mut chain_client = self.make_chain_client(
-                storage.clone(),
-                chain_id, // None
-            );
+            let mut chain_client = self.make_chain_client(storage.clone(), chain_id);
             if let Ok(cert) = chain_client.subscribe_to_new_committees().await {
                 debug!(
                     "Subscribed {:?} to the admin chain {:?}",
@@ -511,10 +503,7 @@ impl ClientContext {
         ViewError: From<S::ContextError>,
     {
         for chain_id in self.wallet_state.own_chain_ids() {
-            let mut chain_client = self.make_chain_client(
-                storage.clone(),
-                chain_id, // None
-            );
+            let mut chain_client = self.make_chain_client(storage.clone(), chain_id);
             chain_client
                 .receive_certificate(certificate.clone())
                 .await
@@ -1063,10 +1052,7 @@ where
                 recipient,
                 amount,
             } => {
-                let mut chain_client = context.make_chain_client(
-                    storage,
-                    sender.chain_id, // None
-                );
+                let mut chain_client = context.make_chain_client(storage, sender.chain_id);
                 info!("Starting transfer");
                 let time_start = Instant::now();
                 let certificate = chain_client
@@ -1084,9 +1070,7 @@ where
                 chain_id,
                 public_key,
             } => {
-                let mut chain_client = context.make_chain_client(
-                    storage, chain_id, // None
-                );
+                let mut chain_client = context.make_chain_client(storage, chain_id);
                 let (new_public_key, key_pair) = match public_key {
                     Some(key) => (key, None),
                     None => {
@@ -1148,9 +1132,7 @@ where
             }
 
             CloseChain { chain_id } => {
-                let mut chain_client = context.make_chain_client(
-                    storage, chain_id, // None
-                );
+                let mut chain_client = context.make_chain_client(storage, chain_id);
                 info!("Starting operation to close the chain");
                 let time_start = Instant::now();
                 let certificate = chain_client.close_chain().await.unwrap();
@@ -1162,9 +1144,7 @@ where
             }
 
             QueryBalance { chain_id } => {
-                let mut chain_client = context.make_chain_client(
-                    storage, chain_id, // None
-                );
+                let mut chain_client = context.make_chain_client(storage, chain_id);
                 info!("Starting query for the local balance");
                 let time_start = Instant::now();
                 let balance = chain_client
@@ -1179,9 +1159,7 @@ where
             }
 
             SyncBalance { chain_id } => {
-                let mut chain_client = context.make_chain_client(
-                    storage, chain_id, // None
-                );
+                let mut chain_client = context.make_chain_client(storage, chain_id);
                 info!("Synchronize chain information");
                 let time_start = Instant::now();
                 let balance = chain_client.synchronize_from_validators().await.unwrap();
@@ -1193,9 +1171,7 @@ where
             }
 
             QueryValidators { chain_id } => {
-                let mut chain_client = context.make_chain_client(
-                    storage, chain_id, // None
-                );
+                let mut chain_client = context.make_chain_client(storage, chain_id);
                 info!("Starting operation to query validators");
                 let time_start = Instant::now();
                 let committee = chain_client.local_committee().await.unwrap();
@@ -1212,11 +1188,8 @@ where
 
                 // Make sure genesis chains are subscribed to the admin chain.
                 let certificates = context.ensure_admin_subscription(&storage).await;
-                let mut chain_client = context.make_chain_client(
-                    storage.clone(),
-                    context.wallet_state.genesis_admin_chain(),
-                    // None,
-                );
+                let mut chain_client = context
+                    .make_chain_client(storage.clone(), context.wallet_state.genesis_admin_chain());
                 for cert in certificates {
                     chain_client.receive_certificate(cert).await.unwrap();
                 }
@@ -1400,9 +1373,7 @@ where
             }
 
             Watch { chain_id, raw } => {
-                let chain_client = context.make_chain_client(
-                    storage, chain_id, // None
-                );
+                let chain_client = context.make_chain_client(storage, chain_id);
                 let chain_id = chain_client.chain_id();
                 info!("Watching for notifications for chain {:?}", chain_id);
                 let mut tracker = NotificationTracker::default();
@@ -1429,9 +1400,7 @@ where
                 publisher,
             } => {
                 let start_time = Instant::now();
-                let mut chain_client = context.make_chain_client(
-                    storage, publisher, // None
-                );
+                let mut chain_client = context.make_chain_client(storage, publisher);
                 let bytecode_id = context
                     .publish_bytecode(&mut chain_client, contract, service)
                     .await?;
@@ -1451,9 +1420,7 @@ where
                 required_application_ids,
             } => {
                 let start_time = Instant::now();
-                let mut chain_client = context.make_chain_client(
-                    storage, creator, // None
-                );
+                let mut chain_client = context.make_chain_client(storage, creator);
 
                 info!("Processing arguments...");
                 let parameters = read_json(json_parameters, json_parameters_path)?;
@@ -1492,9 +1459,7 @@ where
                 required_application_ids,
             } => {
                 let start_time = Instant::now();
-                let mut chain_client = context.make_chain_client(
-                    storage, publisher, // None
-                );
+                let mut chain_client = context.make_chain_client(storage, publisher);
 
                 info!("Processing arguments...");
                 let parameters = read_json(json_parameters, json_parameters_path)?;
@@ -1600,9 +1565,7 @@ where
                     required_application_ids,
                 } => {
                     let start_time = Instant::now();
-                    let mut chain_client = context.make_chain_client(
-                        storage, publisher, // None
-                    );
+                    let mut chain_client = context.make_chain_client(storage, publisher);
 
                     info!("Processing arguments...");
                     let parameters = read_json(json_parameters, json_parameters_path)?;

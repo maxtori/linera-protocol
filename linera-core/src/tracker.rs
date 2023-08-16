@@ -5,9 +5,9 @@ use linera_base::{
     data_types::{BlockHeight, RoundNumber},
     identifiers::ChainId,
 };
-use linera_chain::{
-    data_types::Origin,
-    worker_types::{Notification, Reason},
+use linera_chain::data_types::{
+    notifications::{Notification, Reason},
+    Origin,
 };
 use std::collections::HashMap;
 

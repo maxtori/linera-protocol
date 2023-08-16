@@ -4,7 +4,9 @@
 //! This module defines the operations indexer plugin.
 
 use crate::types::IndexerError;
-use async_graphql::{EmptyMutation, EmptySubscription, Object, OutputType, Schema, SimpleObject};
+use async_graphql::{
+    EmptyMutation, EmptySubscription, Object, OneofObject, OutputType, Schema, SimpleObject,
+};
 use linera_base::{
     crypto::{BcsHashable, CryptoHash},
     data_types::BlockHeight,
@@ -149,6 +151,12 @@ fn hashed_operation(operation: ChainOperation<bool>) -> ChainOperation<CryptoHas
     }
 }
 
+#[derive(OneofObject)]
+pub enum FromOperation {
+    Hash(CryptoHash),
+    Last(ChainId),
+}
+
 #[Object(name = "OperationsRoot")]
 impl<C> OperationsPlugin<C>
 where
@@ -171,13 +179,19 @@ where
         Ok(operation.map(hashed_operation))
     }
 
-    /// Gets the operations in downard order from a operation hash
+    /// Gets the operations in downward order from an operation hash or from the last block of a chain
     pub async fn operations(
         &self,
-        from: CryptoHash,
+        from: FromOperation,
         limit: Option<u32>,
     ) -> Result<Vec<ChainOperation<CryptoHash>>, IndexerError> {
-        let mut key = Some(from);
+        let mut key = match from {
+            FromOperation::Hash(hash) => Some(hash),
+            FromOperation::Last(chain_id) => match self.0.lock().await.last.get(&chain_id).await? {
+                None => return Ok(Vec::new()),
+                Some((hash, _, _)) => Some(hash),
+            },
+        };
         let mut result = Vec::new();
         let limit = limit.unwrap_or(20);
         for _ in 0..limit {

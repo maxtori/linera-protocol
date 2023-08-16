@@ -12,11 +12,9 @@ use linera_base::{
     ensure,
     identifiers::{ChainId, Owner},
 };
-use linera_chain::{
-    data_types::{
-        BlockAndRound, BlockProposal, Certificate, HashedValue, LiteCertificate, LiteValue,
-    },
-    worker_types::Notification,
+use linera_chain::data_types::{
+    notifications::Notification, BlockAndRound, BlockProposal, Certificate, HashedValue,
+    LiteCertificate, LiteValue,
 };
 use linera_core::{
     data_types::{ChainInfoQuery, ChainInfoResponse, CrossChainRequest},
@@ -451,8 +449,7 @@ pub mod tests {
         data_types::{Amount, Timestamp},
     };
     use linera_chain::{
-        data_types::{Block, BlockAndRound, ExecutedBlock, HashedValue},
-        worker_types::Reason,
+        data_types::{notifications::Reason, Block, BlockAndRound, ExecutedBlock, HashedValue},
         ChainManagerInfo,
     };
     use linera_core::data_types::ChainInfo;

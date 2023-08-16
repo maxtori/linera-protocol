@@ -16,9 +16,9 @@ use linera_base::{
 };
 use linera_chain::{
     data_types::{
-        Block, BlockProposal, Certificate, ExecutedBlock, HashedValue, LiteCertificate, Origin,
+        notifications::Notification, Block, BlockProposal, Certificate, ExecutedBlock, HashedValue,
+        LiteCertificate, Origin,
     },
-    worker_types::Notification,
     ChainError, ChainManagerInfo,
 };
 use linera_execution::{

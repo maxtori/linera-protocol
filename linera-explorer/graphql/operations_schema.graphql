@@ -1,3 +1,5 @@
+directive @oneOf on INPUT_OBJECT
+
 """
 A block height to identify blocks in a chain
 """
@@ -29,6 +31,11 @@ A Sha3-256 value
 scalar CryptoHash
 
 
+input FromOperation @oneOf {
+	hash: CryptoHash
+	last: ChainId
+}
+
 
 
 """
@@ -42,9 +49,9 @@ type OperationsRoot {
 	"""
 	operation(key: CryptoHash!): ChainOperation
 	"""
-	Gets the operations in downard order from a operation hash
+	Gets the operations in downward order from an operation hash or from the last block of a chain
 	"""
-	operations(from: CryptoHash!, limit: Int): [ChainOperation!]!
+	operations(from: FromOperation!, limit: Int): [ChainOperation!]!
 	"""
 	Gets the number of operations registered for a chain
 	"""
