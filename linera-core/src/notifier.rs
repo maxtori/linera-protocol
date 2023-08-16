@@ -69,9 +69,12 @@ where
     }
 }
 
-impl Notifier<linera_chain::worker_types::Notification> {
-    /// Process multiple notifications of type [`linera_chain::worker_types::Notification`].
-    pub fn handle_notifications(&self, notifications: &[linera_chain::worker_types::Notification]) {
+impl Notifier<linera_chain::data_types::notifications::Notification> {
+    /// Process multiple notifications of type [`linera_chain::data_types::notifications::Notification`].
+    pub fn handle_notifications(
+        &self,
+        notifications: &[linera_chain::data_types::notifications::Notification],
+    ) {
         for notification in notifications {
             self.notify(&notification.chain_id, notification);
         }

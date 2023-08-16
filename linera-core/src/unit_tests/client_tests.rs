@@ -22,8 +22,10 @@ use linera_base::{
     identifiers::{ChainDescription, ChainId, MessageId, Owner},
 };
 use linera_chain::{
-    data_types::{CertificateValue, ExecutedBlock},
-    worker_types::{Notification, Reason},
+    data_types::{
+        notifications::{Notification, Reason},
+        CertificateValue, ExecutedBlock,
+    },
     ChainError,
 };
 use linera_execution::{

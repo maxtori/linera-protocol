@@ -13,10 +13,10 @@ use linera_base::{
 };
 use linera_chain::{
     data_types::{
+        notifications::{Notification, Reason},
         Block, BlockAndRound, BlockProposal, Certificate, CertificateValue, ExecutedBlock,
         HashedValue, IncomingMessage, LiteCertificate, Medium, Origin, Target,
     },
-    worker_types::{Notification, Reason},
     ChainManagerOutcome, ChainStateView,
 };
 use linera_execution::{

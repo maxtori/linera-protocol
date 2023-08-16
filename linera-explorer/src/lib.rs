@@ -10,12 +10,23 @@ mod graphql;
 mod input_type;
 mod js_utils;
 
+use anyhow::{anyhow, Result};
 use futures::prelude::*;
+use graphql::{
+    applications::ApplicationsApplications as Application,
+    block::BlockBlock as Block,
+    blocks::BlocksBlocks as Blocks,
+    get_operation::GetOperationOperation as Operation,
+    operations::{FromOperation, OperationsOperations as Operations},
+    Chains,
+};
 use graphql_client::{reqwest::post_graphql, Response};
+use js_utils::{getf, log_str, parse, setf, stringify, SER};
 use linera_base::{
     crypto::CryptoHash,
     identifiers::{ChainDescription, ChainId},
 };
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_wasm_bindgen::from_value;
@@ -25,14 +36,6 @@ use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use ws_stream_wasm::*;
-
-use graphql::{
-    applications::ApplicationsApplications as Application, block::BlockBlock as Block,
-    blocks::BlocksBlocks as Blocks, get_operation::GetOperationOperation as Operation,
-    operations::OperationsOperations as Operations, Chains,
-};
-use js_utils::{getf, log_str, parse, setf, stringify, SER};
-use once_cell::sync::OnceCell;
 
 static WEBSOCKET: OnceCell<WsMeta> = OnceCell::new();
 
@@ -147,70 +150,53 @@ async fn get_blocks(
     chain_id: ChainId,
     from: Option<CryptoHash>,
     limit: Option<u32>,
-) -> Result<Vec<Blocks>, String> {
+) -> Result<Vec<Blocks>> {
     let client = reqwest::Client::new();
     let variables = graphql::blocks::Variables {
         from,
         chain_id,
         limit: limit.map(|x| x.into()),
     };
-    let res = post_graphql::<crate::graphql::Blocks, _>(&client, node, variables)
-        .await
-        .map_err(|e| e.to_string())?;
+    let res = post_graphql::<crate::graphql::Blocks, _>(&client, node, variables).await?;
     match res.data {
-        None => Err(format!("null blocks data: {:?}", res.errors)),
+        None => Err(anyhow!("null blocks data: {:?}", res.errors)),
         Some(data) => Ok(data.blocks),
     }
 }
 
-async fn get_applications(node: &str, chain_id: ChainId) -> Result<Vec<Application>, String> {
+async fn get_applications(node: &str, chain_id: ChainId) -> Result<Vec<Application>> {
     let client = reqwest::Client::new();
     let variables = graphql::applications::Variables { chain_id };
-    let result = post_graphql::<crate::graphql::Applications, _>(&client, node, variables)
-        .await
-        .map_err(|e| e.to_string())?;
+    let result = post_graphql::<crate::graphql::Applications, _>(&client, node, variables).await?;
     match result.data {
-        None => Err(format!("null applications data: {:?}", result.errors)),
+        None => Err(anyhow!("null applications data: {:?}", result.errors)),
         Some(data) => Ok(data.applications),
     }
 }
 
-async fn get_operations(indexer: &str, chain_id: ChainId) -> Result<Vec<Operations>, String> {
+async fn get_operations(indexer: &str, chain_id: ChainId) -> Result<Vec<Operations>> {
     let client = reqwest::Client::new();
-    let variables = graphql::last_operation::Variables { chain_id };
     let operations_indexer = format!("{}/operations", indexer);
-    let result =
-        post_graphql::<crate::graphql::LastOperation, _>(&client, &operations_indexer, variables)
-            .await
-            .map_err(|e| e.to_string())?;
-    let data = result
-        .data
-        .ok_or(format!("null last operation data: {:?}", result.errors))?;
-    let Some(last) = data.last else {
-        return Ok(Vec::new());
-    };
     let variables = graphql::operations::Variables {
-        from: last,
+        from: FromOperation::Last(chain_id),
         limit: None,
     };
     let result =
         post_graphql::<crate::graphql::Operations, _>(&client, &operations_indexer, variables)
-            .await
-            .map_err(|e| e.to_string())?;
-
+            .await?;
     result
         .data
-        .ok_or(format!("null operations data: {:?}", result.errors))
+        .ok_or_else(|| anyhow!("null operations data: {:?}", result.errors))
         .map(|data| data.operations)
 }
 
 /// Returns the error page.
-fn error(msg: &str) -> (Page, String) {
-    (Page::Error(msg.to_string()), "/error".to_string())
+fn error(error: &anyhow::Error) -> (Page, String) {
+    (Page::Error(error.to_string()), "/error".to_string())
 }
 
 /// Returns the home page.
-async fn home(node: &str, chain_id: ChainId) -> Result<(Page, String), String> {
+async fn home(node: &str, chain_id: ChainId) -> Result<(Page, String)> {
     let blocks = get_blocks(node, chain_id, None, None).await?;
     let apps = get_applications(node, chain_id).await?;
     Ok((Page::Home { blocks, apps }, format!("/?chain={}", chain_id)))
@@ -222,25 +208,19 @@ async fn blocks(
     chain_id: ChainId,
     from: Option<CryptoHash>,
     limit: Option<u32>,
-) -> Result<(Page, String), String> {
+) -> Result<(Page, String)> {
     // TODO: limit is not used in the UI, it should be implemented with some path arguments and select input
     let blocks = get_blocks(node, chain_id, from, limit).await?;
     Ok((Page::Blocks(blocks), format!("/blocks?chain={}", chain_id)))
 }
 
 /// Returns the block page.
-async fn block(
-    node: &str,
-    chain_id: ChainId,
-    hash: Option<CryptoHash>,
-) -> Result<(Page, String), String> {
+async fn block(node: &str, chain_id: ChainId, hash: Option<CryptoHash>) -> Result<(Page, String)> {
     let client = reqwest::Client::new();
     let variables = graphql::block::Variables { hash, chain_id };
-    let result = post_graphql::<crate::graphql::Block, _>(&client, node, variables)
-        .await
-        .map_err(|e| e.to_string())?;
-    let data = result.data.ok_or("no block data found".to_string())?;
-    let block = data.block.ok_or("no block found".to_string())?;
+    let result = post_graphql::<crate::graphql::Block, _>(&client, node, variables).await?;
+    let data = result.data.ok_or_else(|| anyhow!("no block data found"))?;
+    let block = data.block.ok_or_else(|| anyhow!("no block found"))?;
     let hash = block.hash;
     Ok((
         Page::Block(Box::new(block)),
@@ -249,13 +229,14 @@ async fn block(
 }
 
 /// Queries wallet chains.
-async fn chains(app: &JsValue, node: &str) -> Result<ChainId, String> {
+async fn chains(app: &JsValue, node: &str) -> Result<ChainId> {
     let client = reqwest::Client::new();
     let variables = graphql::chains::Variables;
-    let result = post_graphql::<Chains, _>(&client, node, variables)
-        .await
-        .map_err(|e| e.to_string())?;
-    let chains = result.data.ok_or("no data in chains query")?.chains;
+    let result = post_graphql::<Chains, _>(&client, node, variables).await?;
+    let chains = result
+        .data
+        .ok_or_else(|| anyhow!("no data in chains query"))?
+        .chains;
     let chains_js = chains
         .list
         .serialize(&SER)
@@ -268,7 +249,7 @@ async fn chains(app: &JsValue, node: &str) -> Result<ChainId, String> {
 }
 
 /// Returns the applications page.
-async fn applications(node: &str, chain_id: ChainId) -> Result<(Page, String), String> {
+async fn applications(node: &str, chain_id: ChainId) -> Result<(Page, String)> {
     let applications = get_applications(node, chain_id).await?;
     Ok((
         Page::Applications(applications),
@@ -277,7 +258,7 @@ async fn applications(node: &str, chain_id: ChainId) -> Result<(Page, String), S
 }
 
 /// Returns the applications page.
-async fn operations(indexer: &str, chain_id: ChainId) -> Result<(Page, String), String> {
+async fn operations(indexer: &str, chain_id: ChainId) -> Result<(Page, String)> {
     let operations = get_operations(indexer, chain_id).await?;
     Ok((
         Page::Operations(operations),
@@ -286,20 +267,19 @@ async fn operations(indexer: &str, chain_id: ChainId) -> Result<(Page, String), 
 }
 
 /// Returns the block page.
-async fn operation(
-    indexer: &str,
-    key: CryptoHash,
-    chain_id: ChainId,
-) -> Result<(Page, String), String> {
+async fn operation(indexer: &str, key: CryptoHash, chain_id: ChainId) -> Result<(Page, String)> {
     let client = reqwest::Client::new();
     let operations_indexer = format!("{}/operations", indexer);
     let variables = graphql::get_operation::Variables { key };
     let result =
         post_graphql::<crate::graphql::GetOperation, _>(&client, operations_indexer, variables)
-            .await
-            .map_err(|e| e.to_string())?;
-    let data = result.data.ok_or("no operation data found".to_string())?;
-    let operation = data.operation.ok_or("no operation found".to_string())?;
+            .await?;
+    let data = result
+        .data
+        .ok_or_else(|| anyhow!("no operation data found"))?;
+    let operation = data
+        .operation
+        .ok_or_else(|| anyhow!("no operation found"))?;
     let key = operation.hash;
     Ok((
         Page::Operation(operation),
@@ -399,7 +379,7 @@ fn fill_type(element: &Value, types: &Vec<Value>) -> Value {
 }
 
 /// Returns the application page.
-async fn application(app: Application) -> Result<(Page, String), String> {
+async fn application(app: Application) -> Result<(Page, String)> {
     let schema = graphql::introspection(&app.link).await?;
     let sch = &schema["data"]["__schema"];
     let types = sch["types"]
@@ -489,7 +469,7 @@ fn chain_id_from_args(
     data: &Data,
     args: &[(String, String)],
     init: bool,
-) -> Result<(ChainId, bool), String> {
+) -> Result<(ChainId, bool)> {
     match find_arg(args, "chain") {
         None => Ok((data.chain, init)),
         Some(chain_id) => {
@@ -497,9 +477,7 @@ fn chain_id_from_args(
                 .serialize(&SER)
                 .expect("failed to serialize ChainId");
             setf(app, "chain", &chain_js);
-            ChainId::from_str(&chain_id)
-                .map_err(|e| e.to_string())
-                .map(|id| (id, id != data.chain || init))
+            Ok(ChainId::from_str(&chain_id).map(|id| (id, id != data.chain || init))?)
         }
     }
 }
@@ -524,33 +502,33 @@ async fn route_aux(
             let page_result = match page_name {
                 "" => home(&address, chain_id).await,
                 "block" => {
-                    let hash = find_arg(&args, "block")
-                        .map(|hash| CryptoHash::from_str(&hash).map_err(|e| e.to_string()));
+                    let hash =
+                        find_arg(&args, "block").map(|hash| Ok(CryptoHash::from_str(&hash)?));
                     match hash {
-                        Some(Err(e)) => Err(e),
                         None => block(&address, chain_id, None).await,
                         Some(Ok(hash)) => block(&address, chain_id, Some(hash)).await,
+                        Some(Err(e)) => Err(e),
                     }
                 }
                 "blocks" => blocks(&address, chain_id, None, Some(20)).await,
                 "applications" => applications(&address, chain_id).await,
                 "application" => match find_arg(&args, "app").map(|v| parse(&v)) {
-                    None => Err("unknown application".to_string()),
+                    None => Err(anyhow!("unknown application")),
                     Some(app_js) => {
                         let app = from_value::<Application>(app_js).unwrap();
                         application(app).await
                     }
                 },
                 "operation" => {
-                    let key = find_arg(&args, "operation")
-                        .map(|key| CryptoHash::from_str(&key).map_err(|e| e.to_string()));
+                    let key =
+                        find_arg(&args, "operation").map(|key| Ok(CryptoHash::from_str(&key)?));
                     match key {
-                        Some(Err(e)) => Err(e),
                         None => block(&address, chain_id, None).await,
                         Some(Ok(key)) => {
                             let indexer = url(&data.config, Protocol::Http, AddressKind::Indexer);
                             operation(&indexer, key, chain_id).await
                         }
+                        Some(Err(e)) => Err(e),
                     }
                 }
                 "operations" => {
@@ -559,9 +537,9 @@ async fn route_aux(
                 }
                 "error" => {
                     let msg = find_arg(&args, "msg").unwrap_or("unknown error".to_string());
-                    Err(msg)
+                    Err(anyhow::Error::msg(msg))
                 }
-                _ => Err("unknown page".to_string()),
+                _ => Err(anyhow!("unknown page")),
             };
             if chain_changed {
                 if let Some(ws) = WEBSOCKET.get() {
@@ -595,8 +573,8 @@ pub async fn route(app: JsValue, path: JsValue, args: JsValue) {
 }
 
 #[wasm_bindgen]
-pub fn short_cryptohash(s: String) -> String {
-    let hash = CryptoHash::from_str(&s).expect("not a cryptohash");
+pub fn short_crypto_hash(s: String) -> String {
+    let hash = CryptoHash::from_str(&s).expect("not a crypto hash");
     format!("{:?}", hash)
 }
 

@@ -15,9 +15,8 @@ use linera_base::{
     data_types::*,
     identifiers::{ChainDescription, ChainId},
 };
-use linera_chain::{
-    data_types::{BlockProposal, Certificate, HashedValue, LiteCertificate},
-    worker_types::Notification,
+use linera_chain::data_types::{
+    notifications::Notification, BlockProposal, Certificate, HashedValue, LiteCertificate,
 };
 use linera_execution::{
     committee::{Committee, ValidatorName},
@@ -523,7 +522,6 @@ where
             block_height,
             std::time::Duration::from_millis(500),
             10,
-            // None,
         ))
     }
 

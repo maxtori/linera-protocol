@@ -14,8 +14,10 @@ use linera_base::{
     identifiers::ChainId,
 };
 use linera_chain::{
-    data_types::{BlockProposal, Certificate, HashedValue, LiteCertificate, Origin},
-    worker_types::Notification,
+    data_types::{
+        notifications::Notification, BlockProposal, Certificate, HashedValue, LiteCertificate,
+        Origin,
+    },
     ChainError,
 };
 use linera_execution::{

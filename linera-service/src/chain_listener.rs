@@ -9,9 +9,9 @@ use linera_base::{
     data_types::Timestamp,
     identifiers::{ChainId, Destination},
 };
-use linera_chain::{
-    data_types::OutgoingMessage,
-    worker_types::{Notification, Reason},
+use linera_chain::data_types::{
+    notifications::{Notification, Reason},
+    OutgoingMessage,
 };
 use linera_core::{
     client::ChainClient,
@@ -40,7 +40,7 @@ pub struct ChainListenerConfig {
 pub trait ClientContext<P: ValidatorNodeProvider> {
     fn wallet_state(&self) -> &WalletState;
 
-    fn make_chain_client<S: Store>(
+    fn make_chain_client<S>(
         &self,
         storage: S,
         chain_id: impl Into<Option<ChainId>>,

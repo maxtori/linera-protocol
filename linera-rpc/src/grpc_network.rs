@@ -34,7 +34,7 @@ use grpc::{
     LiteCertificate, SubscriptionRequest,
 };
 use linera_base::identifiers::ChainId;
-use linera_chain::{data_types, worker_types::Notification};
+use linera_chain::{data_types, data_types::notifications::Notification};
 use linera_core::{
     node::{NodeError, NotificationStream, ValidatorNode},
     worker::{NetworkActions, ValidatorWorker, WorkerError, WorkerState},

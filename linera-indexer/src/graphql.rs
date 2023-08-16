@@ -8,9 +8,9 @@ use linera_base::{
     data_types::{BlockHeight, Timestamp},
     identifiers::{ChainId, Destination, Owner},
 };
-use linera_chain::{
-    data_types::{Event, ExecutedBlock, HashedValue, IncomingMessage, Origin, OutgoingMessage},
-    worker_types::Notification,
+use linera_chain::data_types::{
+    notifications::Notification, Event, ExecutedBlock, HashedValue, IncomingMessage, Origin,
+    OutgoingMessage,
 };
 use linera_execution::{committee::Epoch, Message, Operation};
 

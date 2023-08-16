@@ -15,7 +15,7 @@ use futures::StreamExt;
 use graphql_client::reqwest::post_graphql;
 use graphql_ws_client::{graphql::StreamingOperation, GraphQLClientClientBuilder};
 use linera_base::{data_types::BlockHeight, identifiers::ChainId};
-use linera_chain::worker_types::Reason;
+use linera_chain::data_types::notifications::Reason;
 use linera_indexer::{
     graphql::{chains, notifications, Chains, Notifications},
     operations::OperationsPlugin,
