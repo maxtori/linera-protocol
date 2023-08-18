@@ -823,9 +823,6 @@ enum ClientCommand {
         /// The port on which to run the server
         #[structopt(long = "port", default_value = "8080")]
         port: NonZeroU16,
-        // /// Indexer plugins to enable
-        // #[structopt(long = "plugins")]
-        // indexer_plugins: Option<Vec<String>>,
     },
 
     /// Publish bytecode.
@@ -1493,10 +1490,7 @@ where
                 target_chain_id,
                 requester_chain_id,
             } => {
-                let mut chain_client = context.make_chain_client(
-                    storage,
-                    requester_chain_id, // None
-                );
+                let mut chain_client = context.make_chain_client(storage, requester_chain_id);
                 info!("Starting request");
                 let certificate = chain_client
                     .request_application(application_id, target_chain_id)

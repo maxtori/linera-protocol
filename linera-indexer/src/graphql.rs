@@ -52,7 +52,7 @@ impl From<block::BlockBlockValueExecutedBlockBlock> for linera_chain::data_types
         let incoming_messages: Vec<IncomingMessage> = val
             .incoming_messages
             .into_iter()
-            .map(|b: block::BlockBlockValueExecutedBlockBlockIncomingMessages| b.into())
+            .map(IncomingMessage::from)
             .collect();
         linera_chain::data_types::Block {
             chain_id: val.chain_id,
@@ -82,7 +82,7 @@ impl From<block::BlockBlockValueExecutedBlock> for ExecutedBlock {
         let messages: Vec<OutgoingMessage> = val
             .messages
             .into_iter()
-            .map(|b: block::BlockBlockValueExecutedBlockMessages| b.into())
+            .map(OutgoingMessage::from)
             .collect();
         ExecutedBlock {
             block: val.block.into(),
@@ -95,10 +95,15 @@ impl From<block::BlockBlockValueExecutedBlock> for ExecutedBlock {
 impl TryFrom<block::BlockBlock> for HashedValue {
     type Error = IndexerError;
     fn try_from(val: block::BlockBlock) -> Result<Self, Self::Error> {
-        if let Some(executed_block) = val.value.executed_block {
-            Ok(HashedValue::new_confirmed(executed_block.into()))
-        } else {
-            Err(IndexerError::UnexpectedBlockStatus(val.value.status))
+        match (val.value.status.as_str(), val.value.executed_block) {
+            ("validated", Some(executed_block)) => {
+                Ok(HashedValue::new_validated(executed_block.into()))
+            }
+            // this constructor needs the "test" feature from linera-service
+            ("confirmed", Some(executed_block)) => {
+                Ok(HashedValue::new_confirmed(executed_block.into()))
+            }
+            _ => Err(IndexerError::UnknownCertificateStatus(val.value.status)),
         }
     }
 }

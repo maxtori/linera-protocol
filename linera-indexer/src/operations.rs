@@ -152,7 +152,7 @@ fn hashed_operation(operation: ChainOperation<bool>) -> ChainOperation<CryptoHas
 }
 
 #[derive(OneofObject)]
-pub enum FromOperation {
+pub enum OperationKeyKind {
     Hash(CryptoHash),
     Last(ChainId),
 }
@@ -166,8 +166,17 @@ where
     /// Gets the operation associated to its hash
     pub async fn operation(
         &self,
-        key: CryptoHash,
+        key: OperationKeyKind,
     ) -> Result<Option<ChainOperation<CryptoHash>>, IndexerError> {
+        let key = match key {
+            OperationKeyKind::Hash(hash) => hash,
+            OperationKeyKind::Last(chain_id) => {
+                match self.0.lock().await.last.get(&chain_id).await? {
+                    None => return Ok(None),
+                    Some((hash, _, _)) => hash,
+                }
+            }
+        };
         let operation = self
             .0
             .lock()
@@ -182,15 +191,17 @@ where
     /// Gets the operations in downward order from an operation hash or from the last block of a chain
     pub async fn operations(
         &self,
-        from: FromOperation,
+        from: OperationKeyKind,
         limit: Option<u32>,
     ) -> Result<Vec<ChainOperation<CryptoHash>>, IndexerError> {
         let mut key = match from {
-            FromOperation::Hash(hash) => Some(hash),
-            FromOperation::Last(chain_id) => match self.0.lock().await.last.get(&chain_id).await? {
-                None => return Ok(Vec::new()),
-                Some((hash, _, _)) => Some(hash),
-            },
+            OperationKeyKind::Hash(hash) => Some(hash),
+            OperationKeyKind::Last(chain_id) => {
+                match self.0.lock().await.last.get(&chain_id).await? {
+                    None => return Ok(Vec::new()),
+                    Some((hash, _, _)) => Some(hash),
+                }
+            }
         };
         let mut result = Vec::new();
         let limit = limit.unwrap_or(20);

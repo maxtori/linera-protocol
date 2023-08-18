@@ -11,30 +11,31 @@ license = "Apache-2.0"
 edition = "2021"
 
 [dependencies]
-linera-base = { workspace = true }
-linera-execution = { workspace = true }
-linera-views = { workspace = true, features = ["rocksdb"] }
-linera-chain = { workspace = true, features = ["test"] }
 
-serde = { workspace = true }
+anyhow = { workspace = true }
 async-graphql = { workspace = true }
+async-graphql-axum = { workspace = true }
+async-recursion = "1.0"
 async-trait = { workspace = true }
-structopt = { workspace = true }
-futures = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 async-tungstenite = { version = "0.22", features = ["tokio-runtime"] }
+axum = { workspace = true, features = ["ws", "headers"] }
+bcs = { workspace = true }
+futures = { workspace = true }
 graphql-ws-client = { version = "0.5", features = ["client-graphql-client"] }
 graphql_client = { version = "0.13", features = [ "reqwest" ] }
+hyper = "0.14"
+linera-base = { workspace = true }
+linera-chain = { workspace = true, features = ["test"] }
+linera-execution = { workspace = true }
+linera-views = { workspace = true, features = ["rocksdb"] }
 reqwest = { workspace = true }
-async-graphql-axum = { workspace = true }
-axum = { workspace = true, features = ["ws", "headers"] }
-async-recursion = "1.0"
+serde = { workspace = true }
+structopt = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tower-http = { workspace = true, features = ["cors"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["fmt"] }
-hyper = "0.14"
-bcs = { workspace = true }
-tower-http = { workspace = true, features = ["cors"] }
 
 [package.metadata.cargo-machete]
 ignored = ["async-trait"]

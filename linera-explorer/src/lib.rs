@@ -16,8 +16,8 @@ use graphql::{
     applications::ApplicationsApplications as Application,
     block::BlockBlock as Block,
     blocks::BlocksBlocks as Blocks,
-    get_operation::GetOperationOperation as Operation,
-    operations::{FromOperation, OperationsOperations as Operations},
+    get_operation::{GetOperationOperation as Operation, OperationKeyKind},
+    operations::{OperationKeyKind as OperationsKeyKind, OperationsOperations as Operations},
     Chains,
 };
 use graphql_client::{reqwest::post_graphql, Response};
@@ -178,7 +178,7 @@ async fn get_operations(indexer: &str, chain_id: ChainId) -> Result<Vec<Operatio
     let client = reqwest::Client::new();
     let operations_indexer = format!("{}/operations", indexer);
     let variables = graphql::operations::Variables {
-        from: FromOperation::Last(chain_id),
+        from: OperationsKeyKind::Last(chain_id),
         limit: None,
     };
     let result =
@@ -267,9 +267,17 @@ async fn operations(indexer: &str, chain_id: ChainId) -> Result<(Page, String)> 
 }
 
 /// Returns the block page.
-async fn operation(indexer: &str, key: CryptoHash, chain_id: ChainId) -> Result<(Page, String)> {
+async fn operation(
+    indexer: &str,
+    key: Option<CryptoHash>,
+    chain_id: ChainId,
+) -> Result<(Page, String)> {
     let client = reqwest::Client::new();
     let operations_indexer = format!("{}/operations", indexer);
+    let key = match key {
+        Some(hash) => OperationKeyKind::Hash(hash),
+        None => OperationKeyKind::Last(chain_id),
+    };
     let variables = graphql::get_operation::Variables { key };
     let result =
         post_graphql::<crate::graphql::GetOperation, _>(&client, operations_indexer, variables)
@@ -464,6 +472,20 @@ fn find_arg(args: &[(String, String)], key: &str) -> Option<String> {
         .find_map(|(k, v)| if k == key { Some(v.clone()) } else { None })
 }
 
+fn find_arg_map<T, F, E>(args: &[(String, String)], key: &str, f: F) -> Result<Option<T>>
+where
+    F: FnOnce(&str) -> Result<T, E>,
+    E: std::error::Error + Send + Sync + 'static,
+{
+    match args
+        .iter()
+        .find_map(|(k, v)| if k == key { Some(v) } else { None })
+    {
+        None => Ok(None),
+        Some(v) => Ok(Some(f(v)?)),
+    }
+}
+
 fn chain_id_from_args(
     app: &JsValue,
     data: &Data,
@@ -482,6 +504,41 @@ fn chain_id_from_args(
     }
 }
 
+async fn page(
+    page_name: &str,
+    node: &str,
+    indexer: &str,
+    chain_id: ChainId,
+    args: &[(String, String)],
+) -> Result<(Page, String)> {
+    match page_name {
+        "" => home(node, chain_id).await,
+        "block" => {
+            let hash = find_arg_map(args, "block", CryptoHash::from_str)?;
+            block(node, chain_id, hash).await
+        }
+        "blocks" => blocks(node, chain_id, None, Some(20)).await,
+        "applications" => applications(node, chain_id).await,
+        "application" => match find_arg(args, "app").map(|v| parse(&v)) {
+            None => Err(anyhow!("unknown application")),
+            Some(app_js) => {
+                let app = from_value::<Application>(app_js).unwrap();
+                application(app).await
+            }
+        },
+        "operation" => {
+            let key = find_arg_map(args, "operation", CryptoHash::from_str)?;
+            operation(indexer, key, chain_id).await
+        }
+        "operations" => operations(indexer, chain_id).await,
+        "error" => {
+            let msg = find_arg(args, "msg").unwrap_or("unknown error".to_string());
+            Err(anyhow::Error::msg(msg))
+        }
+        _ => Err(anyhow!("unknown page")),
+    }
+}
+
 /// Main function to switch between Vue pages.
 async fn route_aux(
     app: &JsValue,
@@ -495,52 +552,12 @@ async fn route_aux(
         (Some(p), _) => (p, args.to_vec()),
         (_, p) => page_name_and_args(p),
     };
-    let address = url(&data.config, Protocol::Http, AddressKind::Node);
+    let node = url(&data.config, Protocol::Http, AddressKind::Node);
+    let indexer = url(&data.config, Protocol::Http, AddressKind::Indexer);
     let result = match chain_info {
         Err(e) => Err(e),
         Ok((chain_id, chain_changed)) => {
-            let page_result = match page_name {
-                "" => home(&address, chain_id).await,
-                "block" => {
-                    let hash =
-                        find_arg(&args, "block").map(|hash| Ok(CryptoHash::from_str(&hash)?));
-                    match hash {
-                        None => block(&address, chain_id, None).await,
-                        Some(Ok(hash)) => block(&address, chain_id, Some(hash)).await,
-                        Some(Err(e)) => Err(e),
-                    }
-                }
-                "blocks" => blocks(&address, chain_id, None, Some(20)).await,
-                "applications" => applications(&address, chain_id).await,
-                "application" => match find_arg(&args, "app").map(|v| parse(&v)) {
-                    None => Err(anyhow!("unknown application")),
-                    Some(app_js) => {
-                        let app = from_value::<Application>(app_js).unwrap();
-                        application(app).await
-                    }
-                },
-                "operation" => {
-                    let key =
-                        find_arg(&args, "operation").map(|key| Ok(CryptoHash::from_str(&key)?));
-                    match key {
-                        None => block(&address, chain_id, None).await,
-                        Some(Ok(key)) => {
-                            let indexer = url(&data.config, Protocol::Http, AddressKind::Indexer);
-                            operation(&indexer, key, chain_id).await
-                        }
-                        Some(Err(e)) => Err(e),
-                    }
-                }
-                "operations" => {
-                    let indexer = url(&data.config, Protocol::Http, AddressKind::Indexer);
-                    operations(&indexer, chain_id).await
-                }
-                "error" => {
-                    let msg = find_arg(&args, "msg").unwrap_or("unknown error".to_string());
-                    Err(anyhow::Error::msg(msg))
-                }
-                _ => Err(anyhow!("unknown page")),
-            };
+            let page_result = page(page_name, &node, &indexer, chain_id, &args).await;
             if chain_changed {
                 if let Some(ws) = WEBSOCKET.get() {
                     let _ = ws.close().await;

@@ -31,11 +31,6 @@ A Sha3-256 value
 scalar CryptoHash
 
 
-input FromOperation @oneOf {
-	hash: CryptoHash
-	last: ChainId
-}
-
 
 
 """
@@ -43,15 +38,20 @@ An operation to be executed in a block
 """
 scalar Operation
 
+input OperationKeyKind @oneOf {
+	hash: CryptoHash
+	last: ChainId
+}
+
 type OperationsRoot {
 	"""
 	Gets the operation associated to its hash
 	"""
-	operation(key: CryptoHash!): ChainOperation
+	operation(key: OperationKeyKind!): ChainOperation
 	"""
 	Gets the operations in downward order from an operation hash or from the last block of a chain
 	"""
-	operations(from: FromOperation!, limit: Int): [ChainOperation!]!
+	operations(from: OperationKeyKind!, limit: Int): [ChainOperation!]!
 	"""
 	Gets the number of operations registered for a chain
 	"""
