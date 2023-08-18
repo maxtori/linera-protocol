@@ -27,7 +27,7 @@ use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::select;
 use tower_http::cors::CorsLayer;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 #[derive(StructOpt, Debug, Clone)]
 enum IndexerCommand {
@@ -55,16 +55,16 @@ struct IndexerConfig {
     /// The address of the service to connect
     #[structopt(long = "service-address", default_value = "localhost")]
     service_address: String,
-    /// TLS/SSl for service connexion
+    /// TLS/SSl for service connection
     #[structopt(long = "tls")]
     tls: bool,
-    /// Rocksdb storage path
+    /// RocksDB storage path
     #[structopt(long, default_value = "./indexer.db")]
     storage: String,
     /// The maximal number of simultaneous stream queries to the database
     #[structopt(long, default_value = "10")]
     max_stream_queries: usize,
-    /// Cashe size for the rocksdb storage
+    /// Cache size for the RocksDB storage
     #[structopt(long, default_value = "1000")]
     cache_size: usize,
     /// Height to start the indexing
@@ -88,7 +88,7 @@ impl futures::task::Spawn for TokioSpawner {
 
 enum Protocol {
     Http,
-    Websocket,
+    WebSocket,
 }
 
 type Context = RocksDbContext<()>;
@@ -96,7 +96,7 @@ type Context = RocksDbContext<()>;
 fn service_address(config: &IndexerConfig, protocol: Protocol) -> String {
     let protocol = match protocol {
         Protocol::Http => "http",
-        Protocol::Websocket => "ws",
+        Protocol::WebSocket => "ws",
     };
     let tls = if config.tls { "s" } else { "" };
     format!(
@@ -112,7 +112,7 @@ async fn connect(
     chain_id: ChainId,
 ) -> Result<ChainId, IndexerError> {
     let mut request =
-        format!("{}/ws", service_address(config, Protocol::Websocket)).into_client_request()?;
+        format!("{}/ws", service_address(config, Protocol::WebSocket)).into_client_request()?;
     request.headers_mut().insert(
         "Sec-WebSocket-Protocol",
         HeaderValue::from_str("graphql-transport-ws")?,
@@ -133,17 +133,19 @@ async fn connect(
     let mut stream = client.streaming_operation(operation).await?;
 
     while let Some(item) = stream.next().await {
-        if let Ok(response) = item {
-            if let Some(data) = response.data {
-                if let Reason::NewBlock { hash, .. } = data.notifications.reason {
-                    if let Ok(block) = indexer.get_value(chain_id, hash).await {
-                        match indexer.process(&block).await {
-                            Ok(()) => continue,
-                            Err(e) => return Err(e),
+        match item {
+            Ok(response) => {
+                if let Some(data) = response.data {
+                    if let Reason::NewBlock { hash, .. } = data.notifications.reason {
+                        if let Ok(block) = indexer.get_value(chain_id, hash).await {
+                            indexer.process(&block).await?;
                         }
                     }
+                } else {
+                    error!("null data from GraphQL WebSocket")
                 }
             }
+            Err(error) => error!("error in WebSocket stream: {}", error),
         }
     }
     Ok(chain_id)
@@ -232,12 +234,18 @@ async fn main() -> Result<(), IndexerError> {
             } else {
                 chains.clone()
             };
-            let connexions = chains
+            let connections = chains
                 .into_iter()
                 .map(|chain_id| connect(&config, &indexer, chain_id));
             select! {
-                result = server(&config, &indexer) => result.map(|()| warn!("GraphQL server stopped")),
-                (result, _, _) = futures::future::select_all(connexions.map(Box::pin)) => result.map(|chain_id| warn!("Connexion to {:?} notifications websocket stopped", chain_id)),
+                result = server(&config, &indexer) => {
+                    result.map(|()| warn!("GraphQL server stopped"))
+                }
+                (result, _, _) = futures::future::select_all(connections.map(Box::pin)) => {
+                    result.map(|chain_id| {
+                        warn!("Connection to {:?} notifications websocket stopped", chain_id)
+                    })
+                }
             }
         }
     }

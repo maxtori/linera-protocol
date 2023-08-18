@@ -3,10 +3,7 @@
 
 //! This module defines the Linera indexer.
 
-pub mod application;
-pub mod applications;
 pub mod graphql;
-pub mod messages;
 pub mod operations;
 pub mod plugin;
 pub mod types;
@@ -60,13 +57,15 @@ where
         start: BlockHeight,
         node: String,
     ) -> Result<Self, IndexerError> {
-        let operations = if plugins.contains(&"operations") {
+        let operations = if plugins.is_empty() {
+            None
+        } else if plugins == ["operations"] {
             let context = ContextFromDb::create(client.clone(), vec![1], ())
                 .await
                 .map_err(|e| IndexerError::ViewError(e.into()))?;
             Some(OperationsPlugin::load(context).await?)
         } else {
-            None
+            return Err(IndexerError::UnknownPlugin(plugins[0].to_string()));
         };
         let context = ContextFromDb::create(client, vec![0], ())
             .await

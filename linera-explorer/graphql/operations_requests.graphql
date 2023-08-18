@@ -1,4 +1,4 @@
-query Operations($from: FromOperation!, $limit: Int) {
+query Operations($from: OperationKeyKind!, $limit: Int) {
   operations(from: $from, limit: $limit) {
     operation {
       block
@@ -20,7 +20,7 @@ query LastOperation($chainId: ChainId!) {
   last(chainId: $chainId)
 }
 
-query GetOperation($key: CryptoHash!) {
+query GetOperation($key: OperationKeyKind!) {
   operation(key: $key) {
     operation {
       block

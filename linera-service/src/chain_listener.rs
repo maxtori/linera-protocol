@@ -60,7 +60,7 @@ pub trait ClientContext<P: ValidatorNodeProvider> {
 
 /// A `ChainListener` is a process that listens to notifications from validators and reacts
 /// appropriately.
-pub struct ChainListener<P, S: linera_storage::Store> {
+pub struct ChainListener<P, S> {
     config: ChainListenerConfig,
     clients: ChainClients<P, S>,
 }
