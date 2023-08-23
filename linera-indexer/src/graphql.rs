@@ -49,7 +49,7 @@ impl From<block::BlockBlockValueExecutedBlockBlockIncomingMessages> for Incoming
 
 impl From<block::BlockBlockValueExecutedBlockBlock> for linera_chain::data_types::Block {
     fn from(val: block::BlockBlockValueExecutedBlockBlock) -> Self {
-        let incoming_messages: Vec<IncomingMessage> = val
+        let incoming_messages = val
             .incoming_messages
             .into_iter()
             .map(IncomingMessage::from)

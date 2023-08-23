@@ -2880,7 +2880,6 @@ dependencies = [
 name = "linera-indexer"
 version = "0.3.0"
 dependencies = [
- "anyhow",
  "async-graphql",
  "async-graphql-axum",
  "async-recursion",

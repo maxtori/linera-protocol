@@ -5,7 +5,7 @@
 
 use crate::types::IndexerError;
 use async_graphql::{
-    EmptyMutation, EmptySubscription, Object, OneofObject, OutputType, Schema, SimpleObject,
+    EmptyMutation, EmptySubscription, InputObject, Object, OneofObject, Schema, SimpleObject,
 };
 use linera_base::{
     crypto::{BcsHashable, CryptoHash},
@@ -24,30 +24,42 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
 
-#[derive(Deserialize, Serialize, Clone, SimpleObject, Debug)]
-pub struct BlockOperation {
-    block: CryptoHash,
+#[derive(Deserialize, Serialize, Clone, SimpleObject, InputObject, Debug)]
+pub struct OperationKey {
+    chain_id: ChainId,
+    height: BlockHeight,
     index: usize,
-    content: linera_execution::Operation,
 }
 
-impl BcsHashable for BlockOperation {}
+impl BcsHashable for OperationKey {}
 
 #[derive(Deserialize, Serialize, Clone, SimpleObject, Debug)]
-pub struct ChainOperation<H: Sync + Send + OutputType> {
-    operation: BlockOperation,
-    height: BlockHeight,
+pub struct ChainOperation {
+    key: OperationKey,
     previous_operation: Option<CryptoHash>,
-    operation_index: u64,
-    hash: H,
+    index: u64,
+    content: Operation,
+}
+
+#[derive(Deserialize, Serialize, Clone, SimpleObject, Debug)]
+pub struct HashedChainOperation {
+    operation: ChainOperation,
+    hash: CryptoHash,
+}
+
+impl HashedChainOperation {
+    pub fn new(operation: ChainOperation) -> Self {
+        let hash = CryptoHash::new(&operation.key);
+        Self { operation, hash }
+    }
 }
 
 #[derive(RootView)]
 pub struct OperationsPluginInternal<C> {
-    last: MapView<C, ChainId, (CryptoHash, BlockHeight, usize)>,
+    last: MapView<C, ChainId, OperationKey>,
     count: MapView<C, ChainId, u64>,
     /// ChainOperation MapView indexed by their hash
-    operations: MapView<C, CryptoHash, ChainOperation<bool>>,
+    operations: MapView<C, CryptoHash, ChainOperation>,
 }
 
 #[derive(Clone)]
@@ -62,7 +74,6 @@ where
     async fn register_operation(
         &self,
         content: Operation,
-        block: CryptoHash,
         height: BlockHeight,
         index: usize,
         chain_id: ChainId,
@@ -70,63 +81,53 @@ where
         let mut plugin = self.0.lock().await;
         let last_operation = plugin.last.get(&chain_id).await?;
         match last_operation {
-            Some((_last_hash, last_height, last_index))
-                if ((last_height > height) || (last_height == height) && (last_index > index)) =>
+            Some(key)
+                if ((key.height > height) || (key.height == height) && (key.index > index)) =>
             {
                 Ok(())
             }
             last_operation => {
-                let previous_operation = last_operation.map(|last| last.0);
-                let operation = BlockOperation {
-                    block,
+                let previous_operation = last_operation.map(|key| CryptoHash::new(&key));
+                let key = OperationKey {
+                    chain_id,
+                    height,
+                    index,
+                };
+                let hash = CryptoHash::new(&key);
+                let index = *plugin.count.get_mut(&chain_id).await?.unwrap_or(&mut 0);
+                let operation = ChainOperation {
+                    key: key.clone(),
+                    previous_operation,
                     index,
                     content,
                 };
-                let key = CryptoHash::new(&operation);
-                let operation_index = *plugin.count.get_mut(&chain_id).await?.unwrap_or(&mut 0);
-                let operation_view = ChainOperation {
-                    operation,
-                    previous_operation,
-                    height,
-                    operation_index,
-                    hash: false,
-                };
-                info!(
-                    "register operation for {:?}:\n{:?}",
-                    chain_id, operation_view
-                );
-                plugin.operations.insert(&key, operation_view.clone())?;
+                info!("register operation for {:?}:\n{:?}", chain_id, operation);
+                plugin.operations.insert(&hash, operation.clone())?;
                 let count = *plugin.count.get_mut(&chain_id).await?.unwrap_or(&mut 0);
                 plugin.count.insert(&chain_id, count + 1)?;
-                plugin.last.insert(&chain_id, (key, height, index))?;
-                plugin.save().await.map_err(IndexerError::ViewError)
+                plugin
+                    .last
+                    .insert(&chain_id, key)
+                    .map_err(IndexerError::ViewError)
             }
         }
     }
 
     /// Main function of plugin: registers the operations for a hashed value
     pub async fn register(&self, value: &HashedValue) -> Result<(), IndexerError> {
-        if let Some(executed_block) = value.inner().executed_block() {
-            let chain_id = value.inner().chain_id();
-            for (i, op) in executed_block.block.operations.iter().enumerate() {
-                match self
-                    .register_operation(
-                        op.clone(),
-                        value.hash(),
-                        executed_block.block.height,
-                        i,
-                        chain_id,
-                    )
-                    .await
-                {
-                    Err(e) => return Err(e),
-                    Ok(()) => continue,
-                }
+        let Some(executed_block) = value.inner().executed_block() else { return Ok(()) };
+        let chain_id = value.inner().chain_id();
+        for (i, op) in executed_block.block.operations.iter().enumerate() {
+            match self
+                .register_operation(op.clone(), executed_block.block.height, i, chain_id)
+                .await
+            {
+                Err(e) => return Err(e),
+                Ok(()) => continue,
             }
-            Ok(())
-        } else {
-            Ok(())
         }
+        let mut plugin = self.0.lock().await;
+        plugin.save().await.map_err(IndexerError::ViewError)
     }
 
     /// Loads the plugin view from context
@@ -140,20 +141,10 @@ where
     }
 }
 
-fn hashed_operation(operation: ChainOperation<bool>) -> ChainOperation<CryptoHash> {
-    let hash = CryptoHash::new(&operation.operation);
-    ChainOperation {
-        operation: operation.operation,
-        height: operation.height,
-        previous_operation: operation.previous_operation,
-        operation_index: operation.operation_index,
-        hash,
-    }
-}
-
 #[derive(OneofObject)]
 pub enum OperationKeyKind {
     Hash(CryptoHash),
+    Key(OperationKey),
     Last(ChainId),
 }
 
@@ -167,25 +158,26 @@ where
     pub async fn operation(
         &self,
         key: OperationKeyKind,
-    ) -> Result<Option<ChainOperation<CryptoHash>>, IndexerError> {
-        let key = match key {
+    ) -> Result<Option<HashedChainOperation>, IndexerError> {
+        let hash = match key {
             OperationKeyKind::Hash(hash) => hash,
             OperationKeyKind::Last(chain_id) => {
                 match self.0.lock().await.last.get(&chain_id).await? {
                     None => return Ok(None),
-                    Some((hash, _, _)) => hash,
+                    Some(key) => CryptoHash::new(&key),
                 }
             }
+            OperationKeyKind::Key(key) => CryptoHash::new(&key),
         };
         let operation = self
             .0
             .lock()
             .await
             .operations
-            .get(&key)
+            .get(&hash)
             .await
             .map_err(IndexerError::ViewError)?;
-        Ok(operation.map(hashed_operation))
+        Ok(operation.map(HashedChainOperation::new))
     }
 
     /// Gets the operations in downward order from an operation hash or from the last block of a chain
@@ -193,26 +185,27 @@ where
         &self,
         from: OperationKeyKind,
         limit: Option<u32>,
-    ) -> Result<Vec<ChainOperation<CryptoHash>>, IndexerError> {
-        let mut key = match from {
+    ) -> Result<Vec<HashedChainOperation>, IndexerError> {
+        let mut hash = match from {
             OperationKeyKind::Hash(hash) => Some(hash),
             OperationKeyKind::Last(chain_id) => {
                 match self.0.lock().await.last.get(&chain_id).await? {
                     None => return Ok(Vec::new()),
-                    Some((hash, _, _)) => Some(hash),
+                    Some(key) => Some(CryptoHash::new(&key)),
                 }
             }
+            OperationKeyKind::Key(key) => Some(CryptoHash::new(&key)),
         };
         let mut result = Vec::new();
         let limit = limit.unwrap_or(20);
         for _ in 0..limit {
-            let Some(next_key) = key else { break };
-            let operation = self.0.lock().await.operations.get(&next_key).await?;
+            let Some(next_hash) = hash else { break };
+            let operation = self.0.lock().await.operations.get(&next_hash).await?;
             match operation {
                 None => break,
                 Some(op) => {
-                    key = op.previous_operation;
-                    result.push(hashed_operation(op))
+                    hash = op.previous_operation;
+                    result.push(HashedChainOperation::new(op))
                 }
             }
         }
@@ -238,6 +231,6 @@ where
             .get(&chain_id)
             .await
             .map_err(IndexerError::ViewError)
-            .map(|opt| opt.map(|last| last.0))
+            .map(|opt| opt.map(|key| CryptoHash::new(&key)))
     }
 }
