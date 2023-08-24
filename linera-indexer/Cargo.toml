@@ -35,6 +35,14 @@ tower-http = { workspace = true, features = ["cors"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["fmt"] }
 
+[dev-dependencies]
+anyhow = { workspace = true }
+linera-service = { workspace = true, features = ["rocksdb"] }
+once_cell = { workspace = true }
+test-log = { workspace = true, features = ["trace"] }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+
 [package.metadata.cargo-machete]
 ignored = ["async-trait"]
 

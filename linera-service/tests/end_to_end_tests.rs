@@ -5,15 +5,11 @@
 #![cfg_attr(not(any(feature = "wasmer", feature = "wasmtime")), allow(dead_code))]
 use linera_base::identifiers::ChainId;
 use linera_service::{
-    client::{cargo_build_binary, ClientWrapper, LocalNetwork, Network},
+    client::{cargo_build_binary, ClientWrapper, LocalNetwork, Network, INTEGRATION_TEST_GUARD},
     node_service::Chains,
 };
-use once_cell::sync::Lazy;
 use std::{io::prelude::*, time::Duration};
-use tokio::{process::Command, sync::Mutex};
-
-/// A static lock to prevent integration tests from running in parallel.
-pub static INTEGRATION_TEST_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+use tokio::process::Command;
 
 #[cfg(any(feature = "wasmer", feature = "wasmtime"))]
 use {
@@ -451,7 +447,7 @@ async fn test_end_to_end_block_query() {
 
 #[test_log::test(tokio::test)]
 async fn test_end_to_end_check_schema() {
-    let path = cargo_build_binary("linera-schema-export").await;
+    let path = cargo_build_binary("linera-schema-export", None).await;
     let mut command = Command::new(path);
     let output = command
         .kill_on_drop(true)

@@ -10,7 +10,7 @@ use linera_base::{
     identifiers::{ChainId, MessageId, Owner},
 };
 use linera_execution::Bytecode;
-use once_cell::sync::OnceCell;
+use once_cell::sync::{Lazy, OnceCell};
 use serde::ser::Serialize;
 use serde_json::{json, value::Value};
 use std::{
@@ -45,6 +45,9 @@ const SERVER_ENV: &str = "LOCAL_NET_SERVER_PARAMS";
 /// to the node-service command of the client.
 const CLIENT_SERVICE_ENV: &str = "LOCAL_NET_CLIENT_SERVICE_PARAMS";
 
+/// A static lock to prevent integration tests from running in parallel.
+pub static INTEGRATION_TEST_GUARD: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
 #[derive(Copy, Clone)]
 pub enum Network {
     Grpc,
@@ -75,7 +78,7 @@ impl Network {
 }
 
 pub struct ClientWrapper {
-    tmp_dir: Rc<TempDir>,
+    pub tmp_dir: Rc<TempDir>,
     storage: String,
     wallet: String,
     max_pending_messages: usize,
@@ -150,7 +153,7 @@ impl ClientWrapper {
     }
 
     async fn run(&self) -> Result<Command> {
-        let path = resolve_binary("linera").await?;
+        let path = resolve_binary("linera", None).await?;
         let mut command = Command::new(path);
         command
             .current_dir(&self.tmp_dir.path().canonicalize()?)
@@ -548,7 +551,7 @@ impl LocalNetwork {
     }
 
     async fn command_for_binary(&self, name: &'static str) -> Result<Command> {
-        let path = resolve_binary(name).await?;
+        let path = resolve_binary(name, None).await?;
         let mut command = Command::new(path);
         command
             .current_dir(&self.tmp_dir.path().canonicalize()?)
@@ -964,9 +967,10 @@ fn detect_current_features() -> Vec<&'static str> {
     features
 }
 
-async fn cargo_force_build_binary(name: &'static str) -> PathBuf {
+async fn cargo_force_build_binary(name: &'static str, package: Option<&'static str>) -> PathBuf {
+    let package = package.unwrap_or("linera-service");
     let mut build_command = Command::new("cargo");
-    build_command.arg("build");
+    build_command.args(["build", "-p", package]);
     let is_release = if let Ok(var) = env::var(CARGO_ENV) {
         let extra_args = var.split_whitespace();
         build_command.args(extra_args.clone());
@@ -1010,8 +1014,8 @@ async fn cargo_force_build_binary(name: &'static str) -> PathBuf {
 }
 
 #[cfg(debug_assertions)]
-pub async fn resolve_binary(name: &'static str) -> Result<PathBuf> {
-    Ok(cargo_build_binary(name).await)
+pub async fn resolve_binary(name: &'static str, package: Option<&'static str>) -> Result<PathBuf> {
+    Ok(cargo_build_binary(name, package).await)
 }
 
 #[cfg(not(debug_assertions))]
@@ -1019,13 +1023,13 @@ pub async fn resolve_binary(name: &'static str) -> Result<PathBuf> {
     crate::util::resolve_cargo_binary(name)
 }
 
-pub async fn cargo_build_binary(name: &'static str) -> PathBuf {
+pub async fn cargo_build_binary(name: &'static str, package: Option<&'static str>) -> PathBuf {
     static COMPILED_BINARIES: OnceCell<Mutex<HashMap<&'static str, PathBuf>>> = OnceCell::new();
     let mut binaries = COMPILED_BINARIES.get_or_init(Default::default).lock().await;
     match binaries.get(name) {
         Some(path) => path.clone(),
         None => {
-            let path = cargo_force_build_binary(name).await;
+            let path = cargo_force_build_binary(name, package).await;
             binaries.insert(name, path.clone());
             path
         }
