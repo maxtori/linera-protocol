@@ -5,12 +5,6 @@ A block height to identify blocks in a chain
 """
 scalar BlockHeight
 
-type BlockOperation {
-	block: CryptoHash!
-	index: Int!
-	content: Operation!
-}
-
 
 """
 The unique identifier (UID) of a chain. This is currently computed as the hash value of a ChainDescription.
@@ -18,11 +12,11 @@ The unique identifier (UID) of a chain. This is currently computed as the hash v
 scalar ChainId
 
 type ChainOperation {
-	operation: BlockOperation!
-	height: BlockHeight!
+	key: OperationKey!
 	previousOperation: CryptoHash
-	operationIndex: Int!
-	hash: CryptoHash!
+	index: Int!
+	block: CryptoHash!
+	content: Operation!
 }
 
 """
@@ -31,6 +25,11 @@ A Sha3-256 value
 scalar CryptoHash
 
 
+type HashedChainOperation {
+	operation: ChainOperation!
+	hash: CryptoHash!
+}
+
 
 
 """
@@ -38,8 +37,21 @@ An operation to be executed in a block
 """
 scalar Operation
 
+type OperationKey {
+	chainId: ChainId!
+	height: BlockHeight!
+	index: Int!
+}
+
+input OperationKeyInput {
+	chainId: ChainId!
+	height: BlockHeight!
+	index: Int!
+}
+
 input OperationKeyKind @oneOf {
 	hash: CryptoHash
+	key: OperationKeyInput
 	last: ChainId
 }
 
@@ -47,11 +59,11 @@ type OperationsRoot {
 	"""
 	Gets the operation associated to its hash
 	"""
-	operation(key: OperationKeyKind!): ChainOperation
+	operation(key: OperationKeyKind!): HashedChainOperation
 	"""
 	Gets the operations in downward order from an operation hash or from the last block of a chain
 	"""
-	operations(from: OperationKeyKind!, limit: Int): [ChainOperation!]!
+	operations(from: OperationKeyKind!, limit: Int): [HashedChainOperation!]!
 	"""
 	Gets the number of operations registered for a chain
 	"""

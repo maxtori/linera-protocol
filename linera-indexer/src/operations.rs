@@ -20,15 +20,27 @@ use linera_views::{
     views::{RootView, View, ViewError},
 };
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{
+    cmp::{Ordering, PartialOrd},
+    sync::Arc,
+};
 use tokio::sync::Mutex;
 use tracing::info;
 
-#[derive(Deserialize, Serialize, Clone, SimpleObject, InputObject, Debug)]
+#[derive(Deserialize, Serialize, Clone, SimpleObject, Debug, PartialEq)]
 pub struct OperationKey {
     chain_id: ChainId,
     height: BlockHeight,
     index: usize,
+}
+
+impl PartialOrd for OperationKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match self.height.cmp(&other.height) {
+            Ordering::Equal => Some(self.index.cmp(&other.index)),
+            ord => Some(ord),
+        }
+    }
 }
 
 impl BcsHashable for OperationKey {}
@@ -38,6 +50,7 @@ pub struct ChainOperation {
     key: OperationKey,
     previous_operation: Option<CryptoHash>,
     index: u64,
+    block: CryptoHash,
     content: Operation,
 }
 
@@ -73,41 +86,35 @@ where
     /// Registers an operation and update count and last entries for this chain ID
     async fn register_operation(
         &self,
+        key: OperationKey,
+        block: CryptoHash,
         content: Operation,
-        height: BlockHeight,
-        index: usize,
-        chain_id: ChainId,
     ) -> Result<(), IndexerError> {
         let mut plugin = self.0.lock().await;
-        let last_operation = plugin.last.get(&chain_id).await?;
+        let last_operation = plugin.last.get(&key.chain_id).await?;
         match last_operation {
-            Some(key)
-                if ((key.height > height) || (key.height == height) && (key.index > index)) =>
-            {
-                Ok(())
-            }
+            Some(last_key) if last_key >= key => Ok(()),
             last_operation => {
                 let previous_operation = last_operation.map(|key| CryptoHash::new(&key));
-                let key = OperationKey {
-                    chain_id,
-                    height,
-                    index,
-                };
                 let hash = CryptoHash::new(&key);
-                let index = *plugin.count.get_mut(&chain_id).await?.unwrap_or(&mut 0);
+                let index = *plugin.count.get_mut(&key.chain_id).await?.unwrap_or(&mut 0);
                 let operation = ChainOperation {
                     key: key.clone(),
                     previous_operation,
                     index,
+                    block,
                     content,
                 };
-                info!("register operation for {:?}:\n{:?}", chain_id, operation);
+                info!(
+                    "register operation for {:?}:\n{:?}",
+                    key.chain_id, operation
+                );
                 plugin.operations.insert(&hash, operation.clone())?;
-                let count = *plugin.count.get_mut(&chain_id).await?.unwrap_or(&mut 0);
-                plugin.count.insert(&chain_id, count + 1)?;
+                let count = *plugin.count.get_mut(&key.chain_id).await?.unwrap_or(&mut 0);
+                plugin.count.insert(&key.chain_id, count + 1)?;
                 plugin
                     .last
-                    .insert(&chain_id, key)
+                    .insert(&key.chain_id, key.clone())
                     .map_err(IndexerError::ViewError)
             }
         }
@@ -117,9 +124,14 @@ where
     pub async fn register(&self, value: &HashedValue) -> Result<(), IndexerError> {
         let Some(executed_block) = value.inner().executed_block() else { return Ok(()) };
         let chain_id = value.inner().chain_id();
-        for (i, op) in executed_block.block.operations.iter().enumerate() {
+        for (index, content) in executed_block.block.operations.iter().enumerate() {
+            let key = OperationKey {
+                chain_id,
+                height: executed_block.block.height,
+                index,
+            };
             match self
-                .register_operation(op.clone(), executed_block.block.height, i, chain_id)
+                .register_operation(key, value.hash(), content.clone())
                 .await
             {
                 Err(e) => return Err(e),
@@ -141,10 +153,19 @@ where
     }
 }
 
+#[derive(Deserialize, Serialize, Clone, InputObject, Debug)]
+pub struct OperationKeyInput {
+    chain_id: ChainId,
+    height: BlockHeight,
+    index: usize,
+}
+
+impl BcsHashable for OperationKeyInput {}
+
 #[derive(OneofObject)]
 pub enum OperationKeyKind {
     Hash(CryptoHash),
-    Key(OperationKey),
+    Key(OperationKeyInput),
     Last(ChainId),
 }
 

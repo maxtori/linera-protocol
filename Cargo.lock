@@ -2880,6 +2880,7 @@ dependencies = [
 name = "linera-indexer"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
  "async-graphql",
  "async-graphql-axum",
  "async-recursion",
@@ -2894,10 +2895,15 @@ dependencies = [
  "linera-base",
  "linera-chain",
  "linera-execution",
+ "linera-service",
  "linera-views",
+ "once_cell",
  "reqwest",
  "serde",
+ "serde_json",
  "structopt",
+ "tempfile",
+ "test-log",
  "thiserror",
  "tokio",
  "tower-http",

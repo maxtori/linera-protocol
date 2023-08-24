@@ -20,10 +20,9 @@ use linera_indexer::{
     graphql::{chains, notifications, Chains, Notifications},
     operations::OperationsPlugin,
     types::IndexerError,
-    Indexer,
+    Indexer, State,
 };
 use linera_views::rocks_db::{RocksDbClient, RocksDbContext};
-use std::sync::Arc;
 use structopt::StructOpt;
 use tokio::select;
 use tower_http::cors::CorsLayer;
@@ -32,7 +31,7 @@ use tracing::{error, info, warn};
 #[derive(StructOpt, Debug, Clone)]
 enum IndexerCommand {
     Schema {
-        plugin: String,
+        plugin: Option<String>,
     },
     Run {
         /// Chains to index
@@ -154,7 +153,8 @@ async fn connect(
 /// Loads indexer from the RocksDb context
 async fn load_indexer(
     config: &IndexerConfig,
-    plugins: &[&str],
+    plugins: Vec<String>,
+    command: linera_indexer::IndexerCommand,
 ) -> Result<Indexer<Context>, IndexerError> {
     let client = RocksDbClient::new(
         &config.storage,
@@ -162,7 +162,7 @@ async fn load_indexer(
         config.cache_size,
     );
     let node = service_address(config, Protocol::Http);
-    Indexer::load(plugins, client, config.start, node).await
+    Indexer::load(plugins, client, config.start, node, command).await
 }
 
 async fn graphiql(uri: Uri) -> impl IntoResponse {
@@ -172,6 +172,12 @@ async fn graphiql(uri: Uri) -> impl IntoResponse {
             .subscription_endpoint("/ws")
             .finish(),
     )
+}
+
+type StateSchema = Schema<State<Context>, EmptyMutation, EmptySubscription>;
+
+async fn state_handler(schema: Extension<StateSchema>, req: GraphQLRequest) -> GraphQLResponse {
+    schema.execute(req.into_inner()).await.into()
 }
 
 type OperationsSchema = Schema<OperationsPlugin<Context>, EmptyMutation, EmptySubscription>;
@@ -189,10 +195,15 @@ async fn server(config: &IndexerConfig, indexer: &Indexer<Context>) -> Result<()
     let operations = indexer.operations.clone();
     let app = Router::new();
     let app = match operations {
-        None => app,
+        None => app
+            .route("/", get(graphiql).post(state_handler))
+            .layer(Extension(indexer.state.clone().schema()))
+            .layer(CorsLayer::permissive()),
         Some(plugin) => app
+            .route("/", get(graphiql).post(state_handler))
             .route("/operations", get(graphiql).post(operations_handler))
             .layer(Extension(plugin.schema()))
+            .layer(Extension(indexer.state.clone().schema()))
             .layer(CorsLayer::permissive()),
     };
     Server::bind(&format!("127.0.0.1:{}", port).parse()?)
@@ -213,14 +224,20 @@ async fn main() -> Result<(), IndexerError> {
     let config = IndexerConfig::from_args();
     match config.clone().command {
         IndexerCommand::Schema { plugin } => {
-            let indexer = load_indexer(&config, &[plugin.as_str()]).await?;
+            let (plugins, plugin) = match plugin {
+                None => (Vec::new(), "".to_string()),
+                Some(plugin) => (vec![plugin.clone()], plugin.to_string()),
+            };
+            let indexer =
+                load_indexer(&config, plugins, linera_indexer::IndexerCommand::Schema).await?;
             println!("{}", indexer.sdl(&plugin)?);
             Ok(())
         }
         IndexerCommand::Run { plugins, chains } => {
-            let plugins: Vec<&str> = plugins.split(',').collect();
+            let plugins: Vec<String> = plugins.split(',').map(|x| x.to_string()).collect();
             info!("config: {:?}", config);
-            let indexer = Arc::new(load_indexer(&config, &plugins).await?);
+            let indexer =
+                load_indexer(&config, plugins, linera_indexer::IndexerCommand::Run).await?;
             let chains = if chains.is_empty() {
                 let client = reqwest::Client::new();
                 let variables = chains::Variables;
@@ -234,9 +251,11 @@ async fn main() -> Result<(), IndexerError> {
             } else {
                 chains.clone()
             };
-            let connections = chains
-                .into_iter()
-                .map(|chain_id| connect(&config, &indexer, chain_id));
+            let connections = {
+                chains
+                    .into_iter()
+                    .map(|chain_id| connect(&config, &indexer, chain_id))
+            };
             select! {
                 result = server(&config, &indexer) => {
                     result.map(|()| warn!("GraphQL server stopped"))

@@ -31,4 +31,6 @@ pub enum IndexerError {
     UnloadedPlugin(String),
     #[error("Unknown certificate status: {0:?}")]
     UnknownCertificateStatus(String),
+    #[error("Different plugins in command line and memory")]
+    WrongPlugins,
 }
