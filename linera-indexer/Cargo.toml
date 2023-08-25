@@ -10,6 +10,10 @@ documentation = "https://docs.rs/linera-indexer/latest/linera_indexer/"
 license = "Apache-2.0"
 edition = "2021"
 
+[features]
+default = ["rocksdb"]
+rocksdb = ["linera-views/rocksdb"]
+
 [dependencies]
 async-graphql = { workspace = true }
 async-graphql-axum = { workspace = true }
@@ -25,7 +29,7 @@ hyper = "0.14"
 linera-base = { workspace = true }
 linera-chain = { workspace = true, features = ["test"] }
 linera-execution = { workspace = true }
-linera-views = { workspace = true, features = ["rocksdb"] }
+linera-views = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 structopt = { workspace = true }
@@ -48,4 +52,5 @@ ignored = ["async-trait"]
 
 [[bin]]
 name = "linera-indexer"
-path = "src/indexer.rs"
+path = "src/main.rs"
+required-features = ["default"]
