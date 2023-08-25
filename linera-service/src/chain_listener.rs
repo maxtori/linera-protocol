@@ -13,11 +13,7 @@ use linera_chain::data_types::{
     notifications::{Notification, Reason},
     OutgoingMessage,
 };
-use linera_core::{
-    client::ChainClient,
-    node::ValidatorNodeProvider,
-    tracker::NotificationTracker,
-};
+use linera_core::{client::ChainClient, node::ValidatorNodeProvider, tracker::NotificationTracker};
 use linera_execution::{ChainOwnership, Message, SystemMessage};
 use linera_storage::Store;
 use linera_views::views::ViewError;

@@ -3,14 +3,17 @@
 
 //! This module defines the operations indexer plugin.
 
-use crate::types::IndexerError;
+use crate::common::IndexerError;
 use async_graphql::{EmptyMutation, EmptySubscription, Object, OneofObject, Schema, SimpleObject};
+use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
+use axum::{extract::Extension, routing::get, Router};
 use linera_base::{crypto::CryptoHash, data_types::BlockHeight, doc_scalar, identifiers::ChainId};
 use linera_chain::data_types::HashedValue;
 use linera_execution::Operation;
 use linera_views::{
-    common::Context,
+    common::{Context, ContextFromDb, KeyValueStoreClient},
     map_view::MapView,
+    value_splitting::DatabaseConsistencyError,
     views::{RootView, View, ViewError},
 };
 use serde::{Deserialize, Serialize};
@@ -58,7 +61,7 @@ pub struct OperationsPluginInternal<C> {
 }
 
 #[derive(Clone)]
-pub struct OperationsPlugin<C>(Arc<Mutex<OperationsPluginInternal<C>>>);
+pub struct OperationsPlugin<C>(Arc<Mutex<OperationsPluginInternal<C>>>, String);
 
 impl<C> OperationsPlugin<C>
 where
@@ -99,8 +102,32 @@ where
         }
     }
 
-    /// Main function of plugin: registers the operations for a hashed value
-    pub async fn register(&self, value: &HashedValue) -> Result<(), IndexerError> {
+    async fn handler(
+        schema: Extension<Schema<Self, EmptyMutation, EmptySubscription>>,
+        req: GraphQLRequest,
+    ) -> GraphQLResponse {
+        schema.execute(req.into_inner()).await.into()
+    }
+
+    fn schema(&self) -> Schema<Self, EmptyMutation, EmptySubscription> {
+        Schema::new(self.clone(), EmptyMutation, EmptySubscription)
+    }
+}
+
+#[async_trait::async_trait]
+impl<DB> crate::plugin::Plugin<DB> for OperationsPlugin<ContextFromDb<(), DB>>
+where
+    DB: KeyValueStoreClient + Clone + Send + Sync + 'static,
+    DB::Error: From<bcs::Error>
+        + From<DatabaseConsistencyError>
+        + Send
+        + Sync
+        + std::error::Error
+        + 'static,
+
+    ViewError: From<DB::Error>,
+{
+    async fn register(&self, value: &HashedValue) -> Result<(), IndexerError> {
         let Some(executed_block) = value.inner().executed_block() else {
             return Ok(());
         };
@@ -123,14 +150,31 @@ where
         plugin.save().await.map_err(IndexerError::ViewError)
     }
 
-    /// Loads the plugin view from context
-    pub async fn load(context: C) -> Result<Self, IndexerError> {
+    async fn from_context(
+        context: ContextFromDb<(), DB>,
+        name: &str,
+    ) -> Result<Self, IndexerError> {
         let plugin = OperationsPluginInternal::load(context).await?;
-        Ok(OperationsPlugin(Arc::new(Mutex::new(plugin))))
+        Ok(OperationsPlugin(
+            Arc::new(Mutex::new(plugin)),
+            name.to_string(),
+        ))
     }
 
-    pub fn schema(self) -> Schema<Self, EmptyMutation, EmptySubscription> {
-        Schema::build(self, EmptyMutation, EmptySubscription).finish()
+    fn sdl(&self) -> String {
+        self.schema().sdl()
+    }
+
+    fn name(&self) -> String {
+        self.1.clone()
+    }
+
+    fn route(&self, app: Router) -> Router {
+        app.route(
+            &format!("/{}", self.1),
+            get(crate::common::graphiql).post(Self::handler),
+        )
+        .layer(Extension(self.schema()))
     }
 }
 

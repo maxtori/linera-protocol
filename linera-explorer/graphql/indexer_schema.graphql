@@ -24,7 +24,13 @@ type LastBlock {
 }
 
 type State {
+	"""
+	Gets the plugins registered in the indexer
+	"""
 	plugins: [String!]!
+	"""
+	Gets the last blocks registered for each chains handled by the indexer
+	"""
 	state: [LastBlock!]!
 }
 

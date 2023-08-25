@@ -1,6 +1,11 @@
 // Copyright (c) Zefchain Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use async_graphql::http::GraphiQLSource;
+use axum::{
+    http::Uri,
+    response::{self, IntoResponse},
+};
 use reqwest::header::InvalidHeaderValue;
 use std::net::AddrParseError;
 use thiserror::Error;
@@ -33,4 +38,10 @@ pub enum IndexerError {
     UnknownCertificateStatus(String),
     #[error("Different plugins in command line and memory")]
     WrongPlugins,
+    #[error("Plugin is already registered")]
+    PluginAlreadyRegistered,
+}
+
+pub async fn graphiql(uri: Uri) -> impl IntoResponse {
+    response::Html(GraphiQLSource::build().endpoint(uri.path()).finish())
 }

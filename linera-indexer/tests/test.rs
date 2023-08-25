@@ -71,7 +71,7 @@ pub async fn run_indexer(tmp_dir: &Rc<TempDir>) -> Child {
     command
         .current_dir(tmp_dir.path().canonicalize().unwrap())
         .kill_on_drop(true)
-        .args(["run", "--plugins", "operations"]);
+        .args(["run"]);
     let child = command.spawn().unwrap();
     let client = reqwest::Client::new();
     for i in 0..10 {

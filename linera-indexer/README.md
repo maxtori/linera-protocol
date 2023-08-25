@@ -1,6 +1,6 @@
 <!-- cargo-rdme start -->
 
-This module defines the Linera indexer.
+This module defines the linera-indexer library.
 
 <!-- cargo-rdme end -->
 
