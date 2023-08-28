@@ -968,7 +968,7 @@ fn detect_current_features() -> Vec<&'static str> {
 }
 
 async fn cargo_force_build_binary(name: &'static str, package: Option<&'static str>) -> PathBuf {
-    let package = package.unwrap_or("linera-service");
+    let package = package.unwrap_or(env!("CARGO_PKG_NAME"));
     let mut build_command = Command::new("cargo");
     build_command.args(["build", "-p", package]);
     let is_release = if let Ok(var) = env::var(CARGO_ENV) {

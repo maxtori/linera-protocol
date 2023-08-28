@@ -159,7 +159,9 @@ where
         last_hash: Option<CryptoHash>,
     ) -> Result<(), IndexerError> {
         let chain_id = value.inner().chain_id();
-        let Some(executed_block) = value.inner().executed_block() else { return Ok(()) };
+        let Some(executed_block) = value.inner().executed_block() else {
+            return Ok(());
+        };
         match executed_block.block.previous_block_hash {
             None => self.process_value(state, value).await,
             Some(hash) => {

@@ -4,7 +4,7 @@
 use anyhow::Result;
 use graphql_client::GraphQLQuery;
 use linera_base::{
-    crypto::CryptoHash,
+    crypto::{BcsHashable, CryptoHash},
     data_types::{BlockHeight, RoundNumber, Timestamp},
     identifiers::{ChainId, Destination, Owner},
 };
@@ -18,6 +18,15 @@ type Event = Value;
 type Origin = Value;
 type UserApplicationDescription = Value;
 type ApplicationId = String;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct OperationKey {
+    pub chain_id: ChainId,
+    pub height: BlockHeight,
+    pub index: usize,
+}
+
+impl BcsHashable for OperationKey {}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Notification {
