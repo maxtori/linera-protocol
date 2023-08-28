@@ -4,14 +4,8 @@
 //! This module defines the operations indexer plugin.
 
 use crate::types::IndexerError;
-use async_graphql::{
-    EmptyMutation, EmptySubscription, InputObject, Object, OneofObject, Schema, SimpleObject,
-};
-use linera_base::{
-    crypto::{BcsHashable, CryptoHash},
-    data_types::BlockHeight,
-    identifiers::ChainId,
-};
+use async_graphql::{EmptyMutation, EmptySubscription, Object, OneofObject, Schema, SimpleObject};
+use linera_base::{crypto::CryptoHash, data_types::BlockHeight, doc_scalar, identifiers::ChainId};
 use linera_chain::data_types::HashedValue;
 use linera_execution::Operation;
 use linera_views::{
@@ -27,44 +21,32 @@ use std::{
 use tokio::sync::Mutex;
 use tracing::info;
 
-#[derive(Deserialize, Serialize, Clone, SimpleObject, Debug, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct OperationKey {
-    chain_id: ChainId,
-    height: BlockHeight,
-    index: usize,
+    pub chain_id: ChainId,
+    pub height: BlockHeight,
+    pub index: usize,
 }
+
+doc_scalar!(OperationKey, "An operation key to index operations");
 
 impl PartialOrd for OperationKey {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match self.height.cmp(&other.height) {
-            Ordering::Equal => Some(self.index.cmp(&other.index)),
-            ord => Some(ord),
-        }
+        Some(
+            self.height
+                .cmp(&other.height)
+                .then_with(|| self.index.cmp(&other.index)),
+        )
     }
 }
-
-impl BcsHashable for OperationKey {}
 
 #[derive(Deserialize, Serialize, Clone, SimpleObject, Debug)]
 pub struct ChainOperation {
     key: OperationKey,
-    previous_operation: Option<CryptoHash>,
+    previous_operation: Option<OperationKey>,
     index: u64,
     block: CryptoHash,
     content: Operation,
-}
-
-#[derive(Deserialize, Serialize, Clone, SimpleObject, Debug)]
-pub struct HashedChainOperation {
-    operation: ChainOperation,
-    hash: CryptoHash,
-}
-
-impl HashedChainOperation {
-    pub fn new(operation: ChainOperation) -> Self {
-        let hash = CryptoHash::new(&operation.key);
-        Self { operation, hash }
-    }
 }
 
 #[derive(RootView)]
@@ -72,7 +54,7 @@ pub struct OperationsPluginInternal<C> {
     last: MapView<C, ChainId, OperationKey>,
     count: MapView<C, ChainId, u64>,
     /// ChainOperation MapView indexed by their hash
-    operations: MapView<C, CryptoHash, ChainOperation>,
+    operations: MapView<C, OperationKey, ChainOperation>,
 }
 
 #[derive(Clone)]
@@ -94,10 +76,8 @@ where
         let last_operation = plugin.last.get(&key.chain_id).await?;
         match last_operation {
             Some(last_key) if last_key >= key => Ok(()),
-            last_operation => {
-                let previous_operation = last_operation.map(|key| CryptoHash::new(&key));
-                let hash = CryptoHash::new(&key);
-                let index = *plugin.count.get_mut(&key.chain_id).await?.unwrap_or(&mut 0);
+            previous_operation => {
+                let index = plugin.count.get(&key.chain_id).await?.unwrap_or(0);
                 let operation = ChainOperation {
                     key: key.clone(),
                     previous_operation,
@@ -109,9 +89,8 @@ where
                     "register operation for {:?}:\n{:?}",
                     key.chain_id, operation
                 );
-                plugin.operations.insert(&hash, operation.clone())?;
-                let count = *plugin.count.get_mut(&key.chain_id).await?.unwrap_or(&mut 0);
-                plugin.count.insert(&key.chain_id, count + 1)?;
+                plugin.operations.insert(&key, operation.clone())?;
+                plugin.count.insert(&key.chain_id, index + 1)?;
                 plugin
                     .last
                     .insert(&key.chain_id, key.clone())
@@ -122,7 +101,9 @@ where
 
     /// Main function of plugin: registers the operations for a hashed value
     pub async fn register(&self, value: &HashedValue) -> Result<(), IndexerError> {
-        let Some(executed_block) = value.inner().executed_block() else { return Ok(()) };
+        let Some(executed_block) = value.inner().executed_block() else {
+            return Ok(());
+        };
         let chain_id = value.inner().chain_id();
         for (index, content) in executed_block.block.operations.iter().enumerate() {
             let key = OperationKey {
@@ -153,19 +134,9 @@ where
     }
 }
 
-#[derive(Deserialize, Serialize, Clone, InputObject, Debug)]
-pub struct OperationKeyInput {
-    chain_id: ChainId,
-    height: BlockHeight,
-    index: usize,
-}
-
-impl BcsHashable for OperationKeyInput {}
-
 #[derive(OneofObject)]
 pub enum OperationKeyKind {
-    Hash(CryptoHash),
-    Key(OperationKeyInput),
+    Key(OperationKey),
     Last(ChainId),
 }
 
@@ -179,26 +150,25 @@ where
     pub async fn operation(
         &self,
         key: OperationKeyKind,
-    ) -> Result<Option<HashedChainOperation>, IndexerError> {
-        let hash = match key {
-            OperationKeyKind::Hash(hash) => hash,
+    ) -> Result<Option<ChainOperation>, IndexerError> {
+        let key = match key {
             OperationKeyKind::Last(chain_id) => {
                 match self.0.lock().await.last.get(&chain_id).await? {
                     None => return Ok(None),
-                    Some(key) => CryptoHash::new(&key),
+                    Some(key) => key,
                 }
             }
-            OperationKeyKind::Key(key) => CryptoHash::new(&key),
+            OperationKeyKind::Key(key) => key,
         };
         let operation = self
             .0
             .lock()
             .await
             .operations
-            .get(&hash)
+            .get(&key)
             .await
             .map_err(IndexerError::ViewError)?;
-        Ok(operation.map(HashedChainOperation::new))
+        Ok(operation)
     }
 
     /// Gets the operations in downward order from an operation hash or from the last block of a chain
@@ -206,27 +176,26 @@ where
         &self,
         from: OperationKeyKind,
         limit: Option<u32>,
-    ) -> Result<Vec<HashedChainOperation>, IndexerError> {
-        let mut hash = match from {
-            OperationKeyKind::Hash(hash) => Some(hash),
+    ) -> Result<Vec<ChainOperation>, IndexerError> {
+        let mut key = match from {
             OperationKeyKind::Last(chain_id) => {
                 match self.0.lock().await.last.get(&chain_id).await? {
                     None => return Ok(Vec::new()),
-                    Some(key) => Some(CryptoHash::new(&key)),
+                    Some(key) => Some(key),
                 }
             }
-            OperationKeyKind::Key(key) => Some(CryptoHash::new(&key)),
+            OperationKeyKind::Key(key) => Some(key),
         };
         let mut result = Vec::new();
         let limit = limit.unwrap_or(20);
         for _ in 0..limit {
-            let Some(next_hash) = hash else { break };
-            let operation = self.0.lock().await.operations.get(&next_hash).await?;
+            let Some(next_key) = key else { break };
+            let operation = self.0.lock().await.operations.get(&next_key).await?;
             match operation {
                 None => break,
                 Some(op) => {
-                    hash = op.previous_operation;
-                    result.push(HashedChainOperation::new(op))
+                    key = op.previous_operation.clone();
+                    result.push(op)
                 }
             }
         }
@@ -245,13 +214,12 @@ where
     }
 
     /// Gets the hash of the last operation registered for a chain
-    pub async fn last(&self, chain_id: ChainId) -> Result<Option<CryptoHash>, IndexerError> {
+    pub async fn last(&self, chain_id: ChainId) -> Result<Option<OperationKey>, IndexerError> {
         let plugin = self.0.lock().await;
         plugin
             .last
             .get(&chain_id)
             .await
             .map_err(IndexerError::ViewError)
-            .map(|opt| opt.map(|key| CryptoHash::new(&key)))
     }
 }

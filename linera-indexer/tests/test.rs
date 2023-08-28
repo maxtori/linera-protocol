@@ -7,11 +7,11 @@ use linera_base::{
     data_types::{BlockHeight, Timestamp},
     identifiers::{ChainId, Destination, Owner},
 };
+use linera_indexer::operations::OperationKey;
 use linera_service::client::{resolve_binary, LocalNetwork, Network, INTEGRATION_TEST_GUARD};
 use serde_json::Value;
 use std::{rc::Rc, time::Duration};
 use tempfile::TempDir;
-
 use tokio::process::{Child, Command};
 use tracing::{info, warn};
 
@@ -81,13 +81,13 @@ pub async fn run_indexer(tmp_dir: &Rc<TempDir>) -> Child {
             .send()
             .await;
         if request.is_ok() {
-            info!("Node service has started");
+            info!("Indexer has started");
             return child;
         } else {
-            warn!("Waiting for node service to start");
+            warn!("Waiting for indexer to start");
         }
     }
-    panic!("Failed to start node service");
+    panic!("Failed to start indexer");
 }
 
 fn indexer_running(child: &mut Child) {
@@ -137,19 +137,19 @@ async fn test_end_to_end_operations_indexer() {
     let plugins = request::<Plugins, _>(&req_client, "http://localhost:8081", plugins::Variables)
         .await
         .plugins;
-    if plugins == vec!["operations".to_string()] {
-        info!("Indexer plugin 'operations' loaded");
-    } else {
-        panic!("Indexer plugin 'operations' not loaded");
-    }
+    assert_eq!(
+        plugins,
+        vec!["operations"],
+        "Indexer plugin 'operations' not loaded",
+    );
 
     // making a few transfers
     let chain0 = ChainId::root(0);
     let chain1 = ChainId::root(1);
     for _ in 0..10 {
         transfer(&req_client, chain0, chain1, 0.1).await;
-        tokio::time::sleep(Duration::from_secs(1)).await;
     }
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // checking indexer state
     let variables = block::Variables {
@@ -169,17 +169,16 @@ async fn test_end_to_end_operations_indexer() {
         indexer_state
             .iter()
             .find_map(|arg| if arg.chain == chain0 { arg.block } else { None });
-    if Some(last_hash) == indexer_hash {
-        info!("Indexer state up-to-date: {:?}", indexer_hash);
-    } else {
-        panic!(
-            "Different state: service({:?}), indexer({:?})",
-            last_hash, indexer_hash
-        );
-    }
+    assert_eq!(
+        Some(last_hash),
+        indexer_hash,
+        "Different states between service and indexer"
+    );
 
     // checking indexer operation
-    let Some(executed_block) = last_block.value.executed_block else { panic!("last block is a new round") };
+    let Some(executed_block) = last_block.value.executed_block else {
+        panic!("last block is a new round")
+    };
     let last_operation = executed_block.block.operations[0].clone();
     let variables = get_operation::Variables {
         key: get_operation::OperationKeyKind::Last(chain0),
@@ -191,29 +190,24 @@ async fn test_end_to_end_operations_indexer() {
             .operation;
     match indexer_operation {
         Some(get_operation::GetOperationOperation {
-            operation:
-                get_operation::GetOperationOperationOperation {
-                    key:
-                        get_operation::GetOperationOperationOperationKey {
-                            chain_id,
-                            height,
-                            index,
-                        },
-                    block,
-                    content,
-                    ..
-                },
+            key,
+            block,
+            content,
             ..
         }) => {
-            if chain_id == chain0
-                && height == executed_block.block.height
-                && index == 0
-                && block == last_hash
-                && content == last_operation
-            {
-            } else {
-                panic!("service and indexer operations are different");
-            }
+            assert_eq!(
+                (key, block, content),
+                (
+                    OperationKey {
+                        chain_id: chain0,
+                        height: executed_block.block.height,
+                        index: 0
+                    },
+                    last_hash,
+                    last_operation
+                ),
+                "service and indexer operations are different"
+            )
         }
         None => panic!("no operation found"),
     }

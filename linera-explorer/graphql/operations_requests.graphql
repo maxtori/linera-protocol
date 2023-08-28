@@ -1,17 +1,10 @@
 query Operations($from: OperationKeyKind!, $limit: Int) {
   operations(from: $from, limit: $limit) {
-    operation {
-      key {
-        chainId
-        height
-        index
-      }
-      previousOperation
-      index
-      block
-      content
-    }
-    hash
+    key
+    previousOperation
+    index
+    block
+    content
   }
 }
 
@@ -25,17 +18,10 @@ query LastOperation($chainId: ChainId!) {
 
 query GetOperation($key: OperationKeyKind!) {
   operation(key: $key) {
-    operation {
-      key {
-        chainId
-        height
-        index
-      }
-      previousOperation
-      index
-      block
-      content
-    }
-    hash
+    key
+    previousOperation
+    index
+    block
+    content
   }
 }

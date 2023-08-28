@@ -18,12 +18,13 @@ use graphql::{
     blocks::BlocksBlocks as Blocks,
     get_operation::{GetOperationOperation as Operation, OperationKeyKind},
     operations::{OperationKeyKind as OperationsKeyKind, OperationsOperations as Operations},
-    Chains,
+    Chains, OperationKey,
 };
 use graphql_client::{reqwest::post_graphql, Response};
 use js_utils::{getf, log_str, parse, setf, stringify, SER};
 use linera_base::{
     crypto::CryptoHash,
+    data_types::BlockHeight,
     identifiers::{ChainDescription, ChainId},
 };
 use once_cell::sync::OnceCell;
@@ -266,16 +267,16 @@ async fn operations(indexer: &str, chain_id: ChainId) -> Result<(Page, String)> 
     ))
 }
 
-/// Returns the block page.
+/// Returns the operation page.
 async fn operation(
     indexer: &str,
-    key: Option<CryptoHash>,
+    key: Option<OperationKey>,
     chain_id: ChainId,
 ) -> Result<(Page, String)> {
     let client = reqwest::Client::new();
     let operations_indexer = format!("{}/operations", indexer);
     let key = match key {
-        Some(hash) => OperationKeyKind::Hash(hash),
+        Some(key) => OperationKeyKind::Key(key),
         None => OperationKeyKind::Last(chain_id),
     };
     let variables = graphql::get_operation::Variables { key };
@@ -288,10 +289,12 @@ async fn operation(
     let operation = data
         .operation
         .ok_or_else(|| anyhow!("no operation found"))?;
-    let key = operation.hash;
     Ok((
-        Page::Operation(operation),
-        format!("/operation/{}?chain={}", key, chain_id),
+        Page::Operation(operation.clone()),
+        format!(
+            "/operation?chain={}&height={}&index={}",
+            chain_id, operation.key.height, operation.key.index
+        ),
     ))
 }
 
@@ -461,7 +464,10 @@ fn page_name_and_args(page: &Page) -> (&str, Vec<(String, String)>) {
         Page::Operations(_) => ("operations", Vec::new()),
         Page::Operation(op) => (
             "operation",
-            vec![("operation".to_string(), op.hash.to_string())],
+            vec![
+                ("height".to_string(), op.key.height.to_string()),
+                ("index".to_string(), op.key.index.to_string()),
+            ],
         ),
         Page::Error(_) => ("error", Vec::new()),
     }
@@ -527,8 +533,19 @@ async fn page(
             }
         },
         "operation" => {
-            let key = find_arg_map(args, "operation", CryptoHash::from_str)?;
-            operation(indexer, key, chain_id).await
+            let height = find_arg_map(args, "height", BlockHeight::from_str)?;
+            let index = find_arg_map(args, "index", usize::from_str)?;
+            match (height, index) {
+                (None, _) | (_, None) => operation(indexer, None, chain_id).await,
+                (Some(height), Some(index)) => {
+                    let key = OperationKey {
+                        chain_id,
+                        height,
+                        index,
+                    };
+                    operation(indexer, Some(key), chain_id).await
+                }
+            }
         }
         "operations" => operations(indexer, chain_id).await,
         "error" => {
