@@ -1,0 +1,32 @@
+# Linera Explorer
+
+<!-- cargo-rdme start -->
+
+This module defines a graphql client for the different parts of linera network.
+
+<!-- cargo-rdme end -->
+
+## Generate schema
+
+To generate the linera service GraphQL schema, a binary `linera-export-schema` is available:
+```bash
+target/debug/linera-schema-export > linera-graphql-client/graphql/service_schema.graphql
+```
+
+To generate the indexer GraphQL schema:
+```bash
+target/debug/linera-indexer schema > linera-graphql-client/graphql/indexer_schema.graphql
+```
+
+To generate the indexer operations GraphQL schema:
+```bash
+target/debug/linera-indexer schema operations > linera-graphql-client/graphql/operations_schema.graphql
+```
+
+## Contributing
+
+See the [CONTRIBUTING](../CONTRIBUTING.md) file for how to help out.
+
+## License
+
+This project is available under the terms of the [Apache 2.0 license](../LICENSE).

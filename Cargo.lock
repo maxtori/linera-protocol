@@ -3013,6 +3013,7 @@ dependencies = [
  "hex",
  "js-sys",
  "linera-base",
+ "linera-graphql-client",
  "once_cell",
  "reqwest",
  "serde",
@@ -3024,6 +3025,26 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "ws_stream_wasm",
+]
+
+[[package]]
+name = "linera-graphql-client"
+version = "0.4.0"
+dependencies = [
+ "graphql_client",
+ "linera-base",
+ "linera-chain",
+ "linera-execution",
+ "linera-service",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "test-log",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3044,6 +3065,7 @@ dependencies = [
  "linera-base",
  "linera-chain",
  "linera-execution",
+ "linera-graphql-client",
  "linera-service",
  "linera-views",
  "once_cell",
@@ -3177,6 +3199,7 @@ dependencies = [
  "linera-chain",
  "linera-core",
  "linera-execution",
+ "linera-graphql-client",
  "linera-rpc",
  "linera-storage",
  "linera-views",
