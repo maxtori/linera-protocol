@@ -31,7 +31,7 @@ async fn transfer(client: &reqwest::Client, url: &str, from: ChainId, to: ChainI
 async fn test_end_to_end_queries() {
     let _guard = INTEGRATION_TEST_GUARD.lock().await;
     let network = Network::Grpc;
-    let mut local_net = LocalNetwork::new(network, 4).unwrap();
+    let mut local_net = LocalNetwork::new(network, 4, None).unwrap();
     let client = local_net.make_client(network);
     local_net.generate_initial_validator_config().await.unwrap();
 
@@ -119,7 +119,7 @@ async fn test_end_to_end_queries() {
 #[test_log::test(tokio::test)]
 async fn test_check_service_schema() {
     let tmp_dir = Rc::new(tempdir().unwrap());
-    let path = resolve_binary("linera-schema-export", Some("linera-service"))
+    let path = resolve_binary("linera-schema-export", Some("linera-service"), "../target")
         .await
         .unwrap();
     let mut command = Command::new(path);
@@ -142,9 +142,13 @@ async fn test_check_service_schema() {
 #[test_log::test(tokio::test)]
 async fn test_check_indexer_schema() {
     let tmp_dir = Rc::new(tempdir().unwrap());
-    let path = resolve_binary("linera-indexer", Some("linera-indexer"))
-        .await
-        .unwrap();
+    let path = resolve_binary(
+        "linera-indexer",
+        Some("linera-indexer-example"),
+        "../target",
+    )
+    .await
+    .unwrap();
     let mut command = Command::new(path);
     let output = command
         .current_dir(tmp_dir.path().canonicalize().unwrap())
@@ -166,9 +170,13 @@ async fn test_check_indexer_schema() {
 #[test_log::test(tokio::test)]
 async fn test_check_indexer_operations_schema() {
     let tmp_dir = Rc::new(tempdir().unwrap());
-    let path = resolve_binary("linera-indexer", Some("linera-indexer"))
-        .await
-        .unwrap();
+    let path = resolve_binary(
+        "linera-indexer",
+        Some("linera-indexer-example"),
+        "../target",
+    )
+    .await
+    .unwrap();
     let mut command = Command::new(path);
     let output = command
         .current_dir(tmp_dir.path().canonicalize().unwrap())
