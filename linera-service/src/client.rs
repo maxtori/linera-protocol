@@ -83,16 +83,18 @@ pub struct ClientWrapper {
     wallet: String,
     max_pending_messages: usize,
     network: Network,
+    path: String,
 }
 
 impl ClientWrapper {
-    fn new(tmp_dir: Rc<TempDir>, network: Network, id: usize) -> Self {
+    fn new(tmp_dir: Rc<TempDir>, network: Network, id: usize, path: &str) -> Self {
         Self {
             tmp_dir,
             storage: format!("rocksdb:client_{}.db", id),
             wallet: format!("wallet_{}.json", id),
             max_pending_messages: 10_000,
             network,
+            path: path.to_string(),
         }
     }
 
@@ -153,7 +155,7 @@ impl ClientWrapper {
     }
 
     async fn run(&self) -> Result<Command> {
-        let path = resolve_binary("linera", None).await?;
+        let path = resolve_binary("linera", None, self.path.as_str()).await?;
         let mut command = Command::new(path);
         command
             .current_dir(&self.tmp_dir.path().canonicalize()?)
@@ -523,6 +525,7 @@ pub struct LocalNetwork {
     next_client_id: usize,
     num_initial_validators: usize,
     local_net: BTreeMap<usize, Validator>,
+    path: String,
 }
 
 impl Drop for LocalNetwork {
@@ -534,24 +537,35 @@ impl Drop for LocalNetwork {
 }
 
 impl LocalNetwork {
-    pub fn new(network: Network, num_initial_validators: usize) -> Result<Self> {
+    pub fn new(
+        network: Network,
+        num_initial_validators: usize,
+        path: Option<&str>,
+    ) -> Result<Self> {
+        let path = path.unwrap_or("../target").to_string();
         Ok(Self {
             tmp_dir: Rc::new(tempdir()?),
             network,
             next_client_id: 0,
             num_initial_validators,
             local_net: BTreeMap::new(),
+            path,
         })
     }
 
     pub fn make_client(&mut self, network: Network) -> ClientWrapper {
-        let client = ClientWrapper::new(self.tmp_dir.clone(), network, self.next_client_id);
+        let client = ClientWrapper::new(
+            self.tmp_dir.clone(),
+            network,
+            self.next_client_id,
+            self.path.as_str(),
+        );
         self.next_client_id += 1;
         client
     }
 
     async fn command_for_binary(&self, name: &'static str) -> Result<Command> {
-        let path = resolve_binary(name, None).await?;
+        let path = resolve_binary(name, None, self.path.as_str()).await?;
         let mut command = Command::new(path);
         command
             .current_dir(&self.tmp_dir.path().canonicalize()?)
@@ -967,7 +981,11 @@ fn detect_current_features() -> Vec<&'static str> {
     features
 }
 
-async fn cargo_force_build_binary(name: &'static str, package: Option<&'static str>) -> PathBuf {
+async fn cargo_force_build_binary(
+    name: &'static str,
+    package: Option<&'static str>,
+    path: &str,
+) -> PathBuf {
     let package = package.unwrap_or(env!("CARGO_PKG_NAME"));
     let mut build_command = Command::new("cargo");
     build_command.args(["build", "-p", package]);
@@ -999,14 +1017,14 @@ async fn cargo_force_build_binary(name: &'static str, package: Option<&'static s
     if is_release {
         env::current_dir()
             .unwrap()
-            .join("../target/release")
+            .join(format!("{}/release", path))
             .join(name)
             .canonicalize()
             .unwrap()
     } else {
         env::current_dir()
             .unwrap()
-            .join("../target/debug")
+            .join(format!("{}/debug", path))
             .join(name)
             .canonicalize()
             .unwrap()
@@ -1014,8 +1032,12 @@ async fn cargo_force_build_binary(name: &'static str, package: Option<&'static s
 }
 
 #[cfg(debug_assertions)]
-pub async fn resolve_binary(name: &'static str, package: Option<&'static str>) -> Result<PathBuf> {
-    Ok(cargo_build_binary(name, package).await)
+pub async fn resolve_binary(
+    name: &'static str,
+    package: Option<&'static str>,
+    path: &str,
+) -> Result<PathBuf> {
+    Ok(cargo_build_binary(name, package, path).await)
 }
 
 #[cfg(not(debug_assertions))]
@@ -1023,13 +1045,17 @@ pub async fn resolve_binary(name: &'static str) -> Result<PathBuf> {
     crate::util::resolve_cargo_binary(name)
 }
 
-pub async fn cargo_build_binary(name: &'static str, package: Option<&'static str>) -> PathBuf {
+pub async fn cargo_build_binary(
+    name: &'static str,
+    package: Option<&'static str>,
+    path: &str,
+) -> PathBuf {
     static COMPILED_BINARIES: OnceCell<Mutex<HashMap<&'static str, PathBuf>>> = OnceCell::new();
     let mut binaries = COMPILED_BINARIES.get_or_init(Default::default).lock().await;
     match binaries.get(name) {
         Some(path) => path.clone(),
         None => {
-            let path = cargo_force_build_binary(name, package).await;
+            let path = cargo_force_build_binary(name, package, path).await;
             binaries.insert(name, path.clone());
             path
         }
