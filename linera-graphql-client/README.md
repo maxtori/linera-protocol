@@ -1,8 +1,8 @@
-# Linera Explorer
+# Linera service and indexer GraphQL client
 
 <!-- cargo-rdme start -->
 
-This module defines a graphql client for the different parts of linera network.
+This module defines a GraphQL client for the node service and the indexer.
 
 <!-- cargo-rdme end -->
 

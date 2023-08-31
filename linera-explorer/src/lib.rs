@@ -399,7 +399,7 @@ fn application_id(app: &Application) -> &str {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn application_id(_app: &Application) -> &str {
-    panic!("explorer not compiler in wasm32 architecture")
+    panic!("explorer not compiled in wasm32 architecture")
 }
 
 /// Returns the application page.
@@ -679,9 +679,7 @@ async fn subscribe_chain(app: &JsValue, address: &str, chain: ChainId) {
                         if let Some(message_data) = payload.data {
                             let data =
                                 from_value::<Data>(app.clone()).expect("cannot parse vue data");
-                            if let Reason::NewBlock { hash: _hash, .. } =
-                                message_data.notifications.reason
-                            {
+                            if let Reason::NewBlock { .. } = message_data.notifications.reason {
                                 if message_data.notifications.chain_id == chain {
                                     route_aux(&app, &data, &None, &Vec::new(), false).await
                                 }

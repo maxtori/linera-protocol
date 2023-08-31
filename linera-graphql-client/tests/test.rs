@@ -1,93 +1,95 @@
 // Copyright (c) Zefchain Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use linera_base::{data_types::Amount, identifiers::ChainId};
+use linera_graphql_client::{
+    request,
+    service::{
+        applications, block, blocks, chains, transfer, Applications, Block, Blocks, Chains,
+        Transfer,
+    },
+};
 use linera_service::client::{resolve_binary, LocalNetwork, Network, INTEGRATION_TEST_GUARD};
-use std::{io::Read, rc::Rc};
+use std::{collections::BTreeMap, io::Read, rc::Rc, str::FromStr};
 use tempfile::tempdir;
 use tokio::process::Command;
 
-#[test_log::test(tokio::test)]
-async fn test_end_to_end_chains_query() {
-    use linera_graphql_client::{
-        request,
-        service::{chains::Variables, Chains},
-    };
+use fungible::{FungibleTokenAbi, InitialState};
 
-    let _guard = INTEGRATION_TEST_GUARD.lock().await;
-    let network = Network::Grpc;
-    let mut local_net = LocalNetwork::new(network, 4).unwrap();
-    let client = local_net.make_client(network);
-    local_net.generate_initial_validator_config().await.unwrap();
-    client.create_genesis_config().await.unwrap();
-    local_net.run().await.unwrap();
-
-    let good_result = {
-        let wallet = client.get_wallet();
-        (wallet.default_chain(), wallet.chain_ids())
+async fn transfer(client: &reqwest::Client, url: &str, from: ChainId, to: ChainId, amount: &str) {
+    let variables = transfer::Variables {
+        chain_id: from,
+        recipient: to,
+        amount: Amount::from_str(amount).unwrap(),
     };
-    let mut node_service = client.run_node_service(None).await.unwrap();
-    let data = request::<Chains, _>(
-        &reqwest::Client::new(),
-        &format!("http://localhost:{}/", node_service.port()),
-        Variables,
-    )
-    .await
-    .unwrap()
-    .chains;
-    assert_eq!((data.default, data.list), good_result);
-    node_service.assert_is_running();
+    request::<Transfer, _>(client, url, variables)
+        .await
+        .unwrap();
 }
 
 #[test_log::test(tokio::test)]
-async fn test_end_to_end_applications_query() {
-    use linera_graphql_client::{
-        request,
-        service::{applications::Variables, Applications},
-    };
-
+async fn test_end_to_end_queries() {
     let _guard = INTEGRATION_TEST_GUARD.lock().await;
     let network = Network::Grpc;
     let mut local_net = LocalNetwork::new(network, 4).unwrap();
     let client = local_net.make_client(network);
     local_net.generate_initial_validator_config().await.unwrap();
+
     client.create_genesis_config().await.unwrap();
     local_net.run().await.unwrap();
 
-    let chain_id = client.get_wallet().default_chain().unwrap();
+    let node_chains = {
+        let wallet = client.get_wallet();
+        (wallet.default_chain(), wallet.chain_ids())
+    };
+    let chain_id = node_chains.0.unwrap();
+
+    // publishing an application
+    let (contract, service) = local_net.build_example("fungible").await.unwrap();
+    let state = InitialState {
+        accounts: BTreeMap::new(),
+    };
+    let application_id = client
+        .publish_and_create::<FungibleTokenAbi>(contract, service, &(), &state, vec![], None)
+        .await
+        .unwrap();
+
     let mut node_service = client.run_node_service(None).await.unwrap();
-    let data = request::<Applications, _>(
-        &reqwest::Client::new(),
-        &format!("http://localhost:{}/", node_service.port()),
-        Variables { chain_id },
+    let req_client = &reqwest::Client::new();
+    let url = &format!("http://localhost:{}/", node_service.port());
+
+    // sending a few transfers
+    let chain0 = ChainId::root(0);
+    let chain1 = ChainId::root(1);
+    for _ in 0..10 {
+        transfer(req_client, url, chain0, chain1, "0.1").await;
+    }
+
+    // check chains query
+    let chains = request::<Chains, _>(req_client, url, chains::Variables)
+        .await
+        .unwrap()
+        .chains;
+    assert_eq!((chains.default, chains.list), node_chains);
+
+    // check applications query
+    let applications = request::<Applications, _>(
+        req_client,
+        url,
+        applications::Variables {
+            chain_id: node_chains.0.unwrap(),
+        },
     )
     .await
     .unwrap()
     .applications;
-    assert_eq!(data, Vec::new());
-    node_service.assert_is_running();
-}
+    assert_eq!(applications[0].id, application_id);
 
-#[test_log::test(tokio::test)]
-async fn test_end_to_end_blocks_query() {
-    use linera_graphql_client::{
-        request,
-        service::{blocks::Variables, Blocks},
-    };
-
-    let _guard = INTEGRATION_TEST_GUARD.lock().await;
-    let network = Network::Grpc;
-    let mut local_net = LocalNetwork::new(network, 4).unwrap();
-    let client = local_net.make_client(network);
-    local_net.generate_initial_validator_config().await.unwrap();
-    client.create_genesis_config().await.unwrap();
-    local_net.run().await.unwrap();
-
-    let chain_id = client.get_wallet().default_chain().unwrap();
-    let mut node_service = client.run_node_service(None).await.unwrap();
-    let data = request::<Blocks, _>(
-        &reqwest::Client::new(),
-        &format!("http://localhost:{}/", node_service.port()),
-        Variables {
+    // check blocks query
+    let blocks = request::<Blocks, _>(
+        req_client,
+        url,
+        blocks::Variables {
             chain_id,
             from: None,
             limit: None,
@@ -96,31 +98,13 @@ async fn test_end_to_end_blocks_query() {
     .await
     .unwrap()
     .blocks;
-    assert_eq!(data, Vec::new());
-    node_service.assert_is_running();
-}
+    assert_eq!(blocks.len(), 10);
 
-#[test_log::test(tokio::test)]
-async fn test_end_to_end_block_query() {
-    use linera_graphql_client::{
-        request,
-        service::{block::Variables, Block},
-    };
-
-    let _guard = INTEGRATION_TEST_GUARD.lock().await;
-    let network = Network::Grpc;
-    let mut local_net = LocalNetwork::new(network, 4).unwrap();
-    let client = local_net.make_client(network);
-    local_net.generate_initial_validator_config().await.unwrap();
-    client.create_genesis_config().await.unwrap();
-    local_net.run().await.unwrap();
-
-    let chain_id = client.get_wallet().default_chain().unwrap();
-    let mut node_service = client.run_node_service(None).await.unwrap();
-    let data = request::<Block, _>(
+    // check block query
+    let _block = request::<Block, _>(
         &reqwest::Client::new(),
         &format!("http://localhost:{}/", node_service.port()),
-        Variables {
+        block::Variables {
             chain_id,
             hash: None,
         },
@@ -128,7 +112,7 @@ async fn test_end_to_end_block_query() {
     .await
     .unwrap()
     .block;
-    assert_eq!(data, None);
+
     node_service.assert_is_running();
 }
 
@@ -148,7 +132,11 @@ async fn test_check_service_schema() {
     let mut file_base = std::fs::File::open("graphql/service_schema.graphql").unwrap();
     let mut graphql_schema = String::new();
     file_base.read_to_string(&mut graphql_schema).unwrap();
-    assert_eq!(graphql_schema, service_schema, "\nGraphQL service schema has changed -> regenerate schema following steps in linera-graphql-client/README.md\n")
+    assert_eq!(
+        graphql_schema, service_schema,
+        "\nGraphQL service schema has changed -> \
+         regenerate schema following steps in linera-graphql-client/README.md\n"
+    )
 }
 
 #[test_log::test(tokio::test)]
@@ -168,7 +156,11 @@ async fn test_check_indexer_schema() {
     let mut file_base = std::fs::File::open("graphql/indexer_schema.graphql").unwrap();
     let mut graphql_schema = String::new();
     file_base.read_to_string(&mut graphql_schema).unwrap();
-    assert_eq!(graphql_schema, indexer_schema, "\nGraphQL indexer schema has changed -> regenerate schema following steps in linera-graphql-client/README.md\n")
+    assert_eq!(
+        graphql_schema, indexer_schema,
+        "\nGraphQL indexer schema has changed -> \
+         regenerate schema following steps in linera-graphql-client/README.md\n"
+    )
 }
 
 #[test_log::test(tokio::test)]
@@ -188,5 +180,9 @@ async fn test_check_indexer_operations_schema() {
     let mut file_base = std::fs::File::open("graphql/operations_schema.graphql").unwrap();
     let mut graphql_schema = String::new();
     file_base.read_to_string(&mut graphql_schema).unwrap();
-    assert_eq!(graphql_schema, service_schema, "\nGraphQL indexer operations schema has changed -> regenerate schema following steps in linera-graphql-client/README.md\n")
+    assert_eq!(
+        graphql_schema, service_schema,
+        "\nGraphQL indexer operations schema has changed -> \
+         regenerate schema following steps in linera-graphql-client/README.md\n"
+    )
 }

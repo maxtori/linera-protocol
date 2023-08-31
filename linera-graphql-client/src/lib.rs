@@ -1,7 +1,7 @@
 // Copyright (c) Zefchain Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//! This module defines a graphql client for the different parts of linera network.
+//! This module defines a GraphQL client for the node service and the indexer.
 
 use graphql_client::{reqwest::post_graphql, GraphQLQuery};
 use reqwest::Client;

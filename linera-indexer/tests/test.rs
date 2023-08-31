@@ -48,11 +48,11 @@ fn indexer_running(child: &mut Child) {
     }
 }
 
-async fn transfer(client: &reqwest::Client, from: ChainId, to: ChainId, amount: f32) {
+async fn transfer(client: &reqwest::Client, from: ChainId, to: ChainId, amount: &str) {
     let variables = transfer::Variables {
         chain_id: from,
         recipient: to,
-        amount: Amount::from_str(&amount.to_string()).unwrap(),
+        amount: Amount::from_str(amount).unwrap(),
     };
     request::<Transfer, _>(client, "http://localhost:8080", variables)
         .await
@@ -88,7 +88,7 @@ async fn test_end_to_end_operations_indexer() {
     let chain0 = ChainId::root(0);
     let chain1 = ChainId::root(1);
     for _ in 0..10 {
-        transfer(&req_client, chain0, chain1, 0.1).await;
+        transfer(&req_client, chain0, chain1, "0.1").await;
     }
     tokio::time::sleep(Duration::from_secs(2)).await;
 

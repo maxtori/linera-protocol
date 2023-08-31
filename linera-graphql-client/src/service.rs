@@ -21,7 +21,6 @@ mod types {
     pub type Event = Value;
     pub type Origin = Value;
     pub type UserApplicationDescription = Value;
-    pub type ApplicationId = String;
 
     #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
     pub struct Notification {
@@ -53,12 +52,11 @@ mod types {
         notifications::{Notification, Reason},
         Event, Origin,
     };
-    pub use linera_execution::{
-        committee::Epoch, ApplicationId, Message, Operation, UserApplicationDescription,
-    };
+    pub use linera_execution::{committee::Epoch, Message, Operation, UserApplicationDescription};
 }
 
 pub use types::*;
+pub type ApplicationId = String;
 
 #[derive(GraphQLQuery)]
 #[graphql(
@@ -115,54 +113,68 @@ mod from {
 
     impl From<block::BlockBlockValueExecutedBlockBlockIncomingMessages> for IncomingMessage {
         fn from(val: block::BlockBlockValueExecutedBlockBlockIncomingMessages) -> Self {
-            IncomingMessage {
-                origin: val.origin,
-                event: val.event,
-            }
+            let block::BlockBlockValueExecutedBlockBlockIncomingMessages { origin, event } = val;
+            IncomingMessage { origin, event }
         }
     }
 
     impl From<block::BlockBlockValueExecutedBlockBlock> for linera_chain::data_types::Block {
         fn from(val: block::BlockBlockValueExecutedBlockBlock) -> Self {
-            let incoming_messages = val
-                .incoming_messages
+            let block::BlockBlockValueExecutedBlockBlock {
+                chain_id,
+                epoch,
+                incoming_messages,
+                operations,
+                height,
+                timestamp,
+                authenticated_signer,
+                previous_block_hash,
+            } = val;
+            let incoming_messages = incoming_messages
                 .into_iter()
                 .map(IncomingMessage::from)
                 .collect();
             linera_chain::data_types::Block {
-                chain_id: val.chain_id,
-                epoch: val.epoch,
+                chain_id,
+                epoch,
                 incoming_messages,
-                operations: val.operations,
-                height: val.height,
-                timestamp: val.timestamp,
-                authenticated_signer: val.authenticated_signer,
-                previous_block_hash: val.previous_block_hash,
+                operations,
+                height,
+                timestamp,
+                authenticated_signer,
+                previous_block_hash,
             }
         }
     }
 
     impl From<block::BlockBlockValueExecutedBlockMessages> for OutgoingMessage {
         fn from(val: block::BlockBlockValueExecutedBlockMessages) -> Self {
+            let block::BlockBlockValueExecutedBlockMessages {
+                destination,
+                authenticated_signer,
+                message,
+            } = val;
             OutgoingMessage {
-                destination: val.destination,
-                authenticated_signer: val.authenticated_signer,
-                message: val.message,
+                destination,
+                authenticated_signer,
+                message,
             }
         }
     }
 
     impl From<block::BlockBlockValueExecutedBlock> for ExecutedBlock {
         fn from(val: block::BlockBlockValueExecutedBlock) -> Self {
-            let messages: Vec<OutgoingMessage> = val
-                .messages
-                .into_iter()
-                .map(OutgoingMessage::from)
-                .collect();
-            ExecutedBlock {
-                block: val.block.into(),
+            let block::BlockBlockValueExecutedBlock {
+                block,
                 messages,
-                state_hash: val.state_hash,
+                state_hash,
+            } = val;
+            let messages: Vec<OutgoingMessage> =
+                messages.into_iter().map(OutgoingMessage::from).collect();
+            ExecutedBlock {
+                block: block.into(),
+                messages,
+                state_hash,
             }
         }
     }
