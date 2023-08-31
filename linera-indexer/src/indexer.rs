@@ -6,11 +6,10 @@
 use crate::{
     common::{graphiql, IndexerError},
     plugin::Plugin,
-    service::{Listener, Service},
+    service::Listener,
 };
 use async_graphql::{EmptyMutation, EmptySubscription, Object, Schema, SimpleObject};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
-use async_recursion::async_recursion;
 use axum::{extract::Extension, routing::get, Router};
 use linera_base::{crypto::CryptoHash, data_types::BlockHeight, identifiers::ChainId};
 use linera_chain::data_types::HashedValue;
@@ -49,6 +48,12 @@ pub enum IndexerCommand {
     Schema,
 }
 
+#[derive(Debug)]
+enum LatestBlock {
+    LatestHash(CryptoHash),
+    StartHeight(BlockHeight),
+}
+
 impl<DB> Indexer<DB>
 where
     DB: KeyValueStoreClient + Clone + Send + Sync + 'static,
@@ -60,7 +65,7 @@ where
         + 'static,
     ViewError: From<DB::Error>,
 {
-    /// Loads all indexer plugins
+    /// Loads the indexer using the context
     pub async fn load(client: DB) -> Result<Self, IndexerError> {
         let context = ContextFromDb::create(client.clone(), "indexer".as_bytes().to_vec(), ())
             .await
@@ -91,33 +96,8 @@ where
         state.save().await.map_err(IndexerError::ViewError)
     }
 
-    /// Processes one hashed value doing recursion until the last state registered is reached
-    #[async_recursion]
-    async fn process_rec(
-        &self,
-        service: &Service,
-        state: &mut StateView<ContextFromDb<(), DB>>,
-        value: &HashedValue,
-        last_hash: Option<CryptoHash>,
-    ) -> Result<(), IndexerError> {
-        let chain_id = value.inner().chain_id();
-        let Some(executed_block) = value.inner().executed_block() else {
-            return Ok(());
-        };
-        match executed_block.block.previous_block_hash {
-            None => self.process_value(state, value).await,
-            Some(hash) => {
-                if Some(hash) != last_hash {
-                    let previous_value = service.get_value(chain_id, hash).await?;
-                    self.process_rec(service, state, &previous_value, last_hash)
-                        .await?
-                }
-                self.process_value(state, value).await
-            }
-        }
-    }
-
-    /// Main function of the indexer: including a value in the indexer
+    /// Main loop of the indexer:
+    /// including a value and all its predecessors not registered in the indexer
     pub async fn process(
         &self,
         listener: &Listener,
@@ -130,18 +110,47 @@ where
         if height < listener.start {
             return Ok(());
         };
-        let last_hash = match state.chains.get(&chain_id).await? {
-            None => None,
+        let latest_block = match state.chains.get(&chain_id).await? {
+            None => LatestBlock::StartHeight(listener.start),
             Some((last_hash, last_height)) => {
                 if last_hash == hash || last_height >= height {
                     return Ok(());
                 }
-                Some(last_hash)
+                LatestBlock::LatestHash(last_hash)
             }
         };
         info!("process {:?}: {:?} ({})", chain_id, hash, height);
-        self.process_rec(&listener.service, state, value, last_hash)
-            .await
+
+        let mut values = Vec::new();
+        let mut value = value.clone();
+        loop {
+            let Some(block) = value.inner().block() else {
+                break;
+            };
+            if !value.inner().is_confirmed() {
+                break;
+            };
+            values.push(value.clone());
+            if let Some(hash) = block.previous_block_hash {
+                match latest_block {
+                    LatestBlock::LatestHash(latest_hash) if latest_hash != hash => {
+                        value = listener.service.get_value(chain_id, hash).await?;
+                        continue;
+                    }
+                    LatestBlock::StartHeight(start) if block.height > start => {
+                        value = listener.service.get_value(chain_id, hash).await?;
+                        continue;
+                    }
+                    _ => break,
+                }
+            }
+            break;
+        }
+
+        while let Some(value) = values.pop() {
+            self.process_value(state, &value).await?
+        }
+        Ok(())
     }
 
     /// Produces the GraphQL schema for the indexer or for a plugin
@@ -173,7 +182,7 @@ where
         schema.execute(req.into_inner()).await.into()
     }
 
-    /// Registers the handler to an axum router
+    /// Registers the handler to an Axum router
     pub fn route(&self, app: Option<Router>) -> Router {
         let app = app.unwrap_or_else(Router::new);
         app.route("/", get(graphiql).post(Self::handler))
@@ -183,7 +192,7 @@ where
 }
 
 #[derive(SimpleObject)]
-pub struct LastBlock {
+pub struct HighestBlock {
     chain: ChainId,
     block: Option<CryptoHash>,
     height: Option<BlockHeight>,
@@ -201,14 +210,14 @@ where
         Ok(state.plugins.indices().await?)
     }
 
-    /// Gets the last blocks registered for each chains handled by the indexer
-    pub async fn state(&self) -> Result<Vec<LastBlock>, IndexerError> {
+    /// Gets the latest blocks registered for each chain handled by the indexer
+    pub async fn state(&self) -> Result<Vec<HighestBlock>, IndexerError> {
         let state = self.0.lock().await;
         let chains = state.chains.indices().await?;
         let mut result = Vec::new();
         for chain in chains {
             let block = state.chains.get(&chain).await?;
-            result.push(LastBlock {
+            result.push(HighestBlock {
                 chain,
                 block: block.map(|b| b.0),
                 height: block.map(|b| b.1),

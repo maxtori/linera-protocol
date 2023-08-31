@@ -1,7 +1,7 @@
 // Copyright (c) Zefchain Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//! This module defines the linera-indexer execuatable using the rocks-db client.
+//! This module defines the linera-indexer executable using the RocksDB client.
 
 use linera_indexer::{
     common::IndexerError, operations::OperationsPlugin, plugin::Plugin, rocks_db::RocksDbRunner,

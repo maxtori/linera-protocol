@@ -28,6 +28,7 @@ use tokio::runtime::Handle;
 use tracing::error;
 
 struct TokioSpawner(Handle);
+
 impl Spawn for TokioSpawner {
     fn spawn_obj(&self, obj: FutureObj<'static, ()>) -> Result<(), SpawnError> {
         self.0.spawn(obj);
@@ -54,17 +55,16 @@ pub struct Service {
 }
 
 impl Service {
-    pub fn partial(&self) -> String {
-        let tls = if self.tls { "s" } else { "" };
-        format!("{}://{}:{}", tls, self.service_address, self.service_port)
-    }
-
     pub fn with_protocol(&self, protocol: Protocol) -> String {
+        let tls = if self.tls { "s" } else { "" };
         let (protocol, suffix) = match protocol {
             Protocol::Http => ("http", ""),
             Protocol::WebSocket => ("ws", "/ws"),
         };
-        format!("{}{}{}", protocol, self.partial(), suffix)
+        format!(
+            "{}{}://{}:{}{}",
+            protocol, tls, self.service_address, self.service_port, suffix
+        )
     }
 
     pub fn websocket(&self) -> String {

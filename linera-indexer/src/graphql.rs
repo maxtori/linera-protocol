@@ -1,7 +1,7 @@
 // Copyright (c) Zefchain Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//! This module defines the structures for graphql queries.
+//! This module defines the structures for GraphQL queries.
 
 use crate::common::IndexerError;
 use graphql_client::GraphQLQuery;

@@ -15,13 +15,13 @@ A Sha3-256 value
 scalar CryptoHash
 
 
-
-
-type LastBlock {
+type HighestBlock {
 	chain: ChainId!
 	block: CryptoHash
 	height: BlockHeight
 }
+
+
 
 type State {
 	"""
@@ -29,9 +29,9 @@ type State {
 	"""
 	plugins: [String!]!
 	"""
-	Gets the last blocks registered for each chains handled by the indexer
+	Gets the latest blocks registered for each chain handled by the indexer
 	"""
-	state: [LastBlock!]!
+	state: [HighestBlock!]!
 }
 
 

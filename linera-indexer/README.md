@@ -1,6 +1,7 @@
 <!-- cargo-rdme start -->
 
-This module defines the linera-indexer library.
+This module defines the linera-indexer library including the main indexer loop,
+the generic plugin and runner trait and the connection to the node service.
 
 <!-- cargo-rdme end -->
 

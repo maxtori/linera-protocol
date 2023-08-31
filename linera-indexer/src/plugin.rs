@@ -32,7 +32,7 @@ where
     /// Gets the name of the plugin
     fn name(&self) -> String;
 
-    /// Registers the plugin to an axum router
+    /// Registers the plugin to an Axum router
     fn route(&self, app: Router) -> Router;
 
     /// Loads the plugin from a client

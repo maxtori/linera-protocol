@@ -17,7 +17,6 @@ rocksdb = ["linera-views/rocksdb"]
 [dependencies]
 async-graphql = { workspace = true }
 async-graphql-axum = { workspace = true }
-async-recursion = "1.0"
 async-trait = { workspace = true }
 async-tungstenite = { version = "0.22", features = ["tokio-runtime"] }
 axum = { workspace = true, features = ["ws", "headers"] }
