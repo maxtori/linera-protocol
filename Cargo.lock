@@ -3124,6 +3124,7 @@ dependencies = [
  "linera-views",
  "serde",
  "tokio",
+ "tower-http",
  "tracing",
 ]
 
