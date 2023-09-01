@@ -65,7 +65,7 @@ where
         + 'static,
     ViewError: From<DB::Error>,
 {
-    /// Loads the indexer using the context
+    /// Loads the indexer using a database backend with an `indexer` prefix.
     pub async fn load(client: DB) -> Result<Self, IndexerError> {
         let context = ContextFromDb::create(client.clone(), "indexer".as_bytes().to_vec(), ())
             .await
@@ -77,7 +77,8 @@ where
         })
     }
 
-    /// Processes one hashed value
+    /// Processes one block:
+    /// registers the block in all the plugins and saves the state of the indexer.
     pub async fn process_value(
         &self,
         state: &mut StateView<ContextFromDb<(), DB>>,
@@ -96,8 +97,9 @@ where
         state.save().await.map_err(IndexerError::ViewError)
     }
 
-    /// Main loop of the indexer:
-    /// including a value and all its predecessors not registered in the indexer
+    /// Processes a NewBlock notification:
+    /// processes all blocks from the latest registered to the one in the notification
+    /// in the corresponding chain.
     pub async fn process(
         &self,
         listener: &Listener,
@@ -153,7 +155,7 @@ where
         Ok(())
     }
 
-    /// Produces the GraphQL schema for the indexer or for a plugin
+    /// Produces the GraphQL schema for the indexer or for a certain plugin
     pub fn sdl(&self, plugin: Option<String>) -> Result<String, IndexerError> {
         match plugin {
             None => Ok(self.state.clone().schema().sdl()),

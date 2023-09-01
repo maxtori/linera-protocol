@@ -1,8 +1,11 @@
 // Copyright (c) Zefchain Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//! This module defines the linera-indexer library including the main indexer loop,
-//! the generic plugin and runner trait and the connection to the node service.
+//! This module defines the linera-indexer library including:
+//! - the indexer connection to the node service (service.rs)
+//! - the block processing (indexer.rs)
+//! - the generic plugin trait (plugin.rs)
+//! - the runner struct (runner.rs)
 
 pub mod common;
 pub mod graphql;

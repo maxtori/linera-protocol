@@ -102,6 +102,7 @@ where
         }
     }
 
+    /// Handler for the GraphQL server
     async fn handler(
         schema: Extension<Schema<Self, EmptyMutation, EmptySubscription>>,
         req: GraphQLRequest,
@@ -109,6 +110,7 @@ where
         schema.execute(req.into_inner()).await.into()
     }
 
+    /// Schema for the GraphQL server
     fn schema(&self) -> Schema<Self, EmptyMutation, EmptySubscription> {
         Schema::new(self.clone(), EmptyMutation, EmptySubscription)
     }
