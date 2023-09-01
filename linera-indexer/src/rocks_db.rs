@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    indexer::Indexer,
+    common::IndexerError,
     runner::{IndexerConfig, Runner},
 };
 use linera_views::rocks_db::RocksDbClient;
@@ -21,43 +21,16 @@ pub struct RocksDbConfig {
     pub cache_size: usize,
 }
 
-pub struct RocksDbRunner {
-    client: RocksDbClient,
-    config: IndexerConfig<RocksDbConfig>,
-    indexer: Indexer<RocksDbClient>,
-}
+pub type RocksDbRunner = Runner<RocksDbClient, RocksDbConfig>;
 
-#[async_trait::async_trait]
-impl Runner<RocksDbClient, RocksDbConfig> for RocksDbRunner {
-    fn make_client(config: &RocksDbConfig) -> RocksDbClient {
-        RocksDbClient::new(
-            &config.storage,
-            config.max_stream_queries,
-            config.cache_size,
-        )
-    }
-
-    fn new(
-        client: RocksDbClient,
-        config: IndexerConfig<RocksDbConfig>,
-        indexer: Indexer<RocksDbClient>,
-    ) -> Self {
-        Self {
-            client,
-            config,
-            indexer,
-        }
-    }
-
-    fn indexer(&mut self) -> &mut Indexer<RocksDbClient> {
-        &mut self.indexer
-    }
-
-    fn config(&self) -> &IndexerConfig<RocksDbConfig> {
-        &self.config
-    }
-
-    fn client(&self) -> &RocksDbClient {
-        &self.client
+impl RocksDbRunner {
+    pub async fn load() -> Result<Self, IndexerError> {
+        let config = IndexerConfig::<RocksDbConfig>::from_args();
+        let client = RocksDbClient::new(
+            &config.client.storage,
+            config.client.max_stream_queries,
+            config.client.cache_size,
+        );
+        Self::new(config, client).await
     }
 }

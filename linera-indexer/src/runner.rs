@@ -30,20 +30,23 @@ pub enum IndexerCommand {
 }
 
 #[derive(StructOpt, Debug, Clone)]
-pub struct IndexerConfig<C: StructOpt> {
+pub struct IndexerConfig<Config: StructOpt> {
     #[structopt(flatten)]
-    pub client: C,
+    pub client: Config,
     #[structopt(subcommand)]
     pub command: IndexerCommand,
 }
 
-pub struct RunnerContent<DB>(Indexer<DB>);
+pub struct Runner<DB, Config: StructOpt> {
+    pub client: DB,
+    pub config: IndexerConfig<Config>,
+    pub indexer: Indexer<DB>,
+}
 
-#[async_trait::async_trait]
-pub trait Runner<DB, CONFIG>
+impl<DB, Config> Runner<DB, Config>
 where
     Self: Send,
-    CONFIG: Clone + std::fmt::Debug + Send + Sync + StructOptInternal,
+    Config: Clone + std::fmt::Debug + Send + Sync + StructOptInternal,
     DB: KeyValueStoreClient + Clone + Send + Sync + 'static,
     DB::Error: From<bcs::Error>
         + From<DatabaseConsistencyError>
@@ -53,31 +56,25 @@ where
         + 'static,
     ViewError: From<DB::Error>,
 {
-    /// Creates a new runner
-    fn new(client: DB, config: IndexerConfig<CONFIG>, indexer: Indexer<DB>) -> Self;
-    /// Creates a client
-    fn make_client(config: &CONFIG) -> DB;
-    /// Getter for the indexer
-    fn indexer(&mut self) -> &mut Indexer<DB>;
-    /// Getter for the configuration
-    fn config(&self) -> &IndexerConfig<CONFIG>;
-    /// Getter for the client
-    fn client(&self) -> &DB;
-
     /// Loads a new runner
-    async fn load() -> Result<Self, IndexerError>
+    pub async fn new(config: IndexerConfig<Config>, client: DB) -> Result<Self, IndexerError>
     where
         Self: Sized,
     {
-        let config = IndexerConfig::<CONFIG>::from_args();
-        let client = Self::make_client(&config.client);
         let indexer = Indexer::load(client.clone()).await?;
-        Ok(Self::new(client, config, indexer))
+        Ok(Self {
+            client,
+            config,
+            indexer,
+        })
     }
 
     /// Registers a new plugin to the indexer
-    async fn add_plugin(&mut self, plugin: impl Plugin<DB> + 'static) -> Result<(), IndexerError> {
-        self.indexer().add_plugin(plugin).await
+    pub async fn add_plugin(
+        &mut self,
+        plugin: impl Plugin<DB> + 'static,
+    ) -> Result<(), IndexerError> {
+        self.indexer.add_plugin(plugin).await
     }
 
     /// Runs a server from the indexer and the plugins
@@ -93,12 +90,11 @@ where
     }
 
     /// Runs a server and the chains listener
-    async fn run(&mut self) -> Result<(), IndexerError> {
-        let config = self.config().clone();
-        let indexer = self.indexer();
+    pub async fn run(&mut self) -> Result<(), IndexerError> {
+        let config = self.config.clone();
         match config.clone().command {
             IndexerCommand::Schema { plugin } => {
-                println!("{}", indexer.sdl(plugin)?);
+                println!("{}", self.indexer.sdl(plugin)?);
                 Ok(())
             }
             IndexerCommand::Run {
@@ -115,10 +111,10 @@ where
                 let connections = {
                     chains
                         .into_iter()
-                        .map(|chain_id| listener.listen(indexer, chain_id))
+                        .map(|chain_id| listener.listen(&self.indexer, chain_id))
                 };
                 select! {
-                    result = Self::server(port, indexer) => {
+                    result = Self::server(port, &self.indexer) => {
                         result.map(|()| warn!("GraphQL server stopped"))
                     }
                     (result, _, _) = futures::future::select_all(connections.map(Box::pin)) => {

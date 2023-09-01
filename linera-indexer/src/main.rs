@@ -5,7 +5,6 @@
 
 use linera_indexer::{
     common::IndexerError, operations::OperationsPlugin, plugin::Plugin, rocks_db::RocksDbRunner,
-    runner::Runner,
 };
 
 #[tokio::main]
@@ -20,7 +19,7 @@ async fn main() -> Result<(), IndexerError> {
 
     let mut runner = RocksDbRunner::load().await?;
     runner
-        .add_plugin(OperationsPlugin::load(runner.client().clone(), "operations").await?)
+        .add_plugin(OperationsPlugin::load(runner.client.clone(), "operations").await?)
         .await?;
     runner.run().await
 }
