@@ -6,6 +6,7 @@ use axum::{
     http::Uri,
     response::{self, IntoResponse},
 };
+use linera_base::crypto::CryptoHash;
 use reqwest::header::InvalidHeaderValue;
 use std::net::AddrParseError;
 use thiserror::Error;
@@ -40,6 +41,8 @@ pub enum IndexerError {
     WrongPlugins,
     #[error("Plugin is already registered")]
     PluginAlreadyRegistered,
+    #[error("Invalid block: {0:?}")]
+    InvalidBlock(CryptoHash),
 }
 
 pub async fn graphiql(uri: Uri) -> impl IntoResponse {
