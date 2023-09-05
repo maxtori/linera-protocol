@@ -1,0 +1,18 @@
+<script setup lang="ts">
+import { Plugin } from '../types'
+
+defineProps<{plugin: Plugin}>()
+</script>
+
+<template>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">Plugin {{ plugin.name }}</div>
+    </div>
+    <div class="card-body">
+      <ul class="list-group">
+        <v-entrypoint v-for="(q, i) in plugin.queries" :entry="q" :link="plugin.link" :key="'query-'+i" kind="query"></v-entrypoint>
+      </ul>
+    </div>
+  </div>
+</template>
